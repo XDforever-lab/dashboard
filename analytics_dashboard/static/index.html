@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商城经营仪表盘</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <header class="header">
+        <h1>商城经营仪表盘与辅助决策系统</h1>
+        <div class="header-meta">
+            <span class="status-dot online"></span>
+            <span id="dbStatus">数据库连接中...</span>
+            <span class="separator">|</span>
+            <span id="computedAt"></span>
+        </div>
+    </header>
+
+    <div class="container">
+        <section class="kpi-section" id="kpiSection">
+            <div class="kpi-card">
+                <div class="kpi-label">GMV</div>
+                <div class="kpi-value" id="kpiGmv">--</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">订单数</div>
+                <div class="kpi-value" id="kpiOrders">--</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">购买用户</div>
+                <div class="kpi-value" id="kpiBuyers">--</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">客单价</div>
+                <div class="kpi-value" id="kpiAov">--</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">退款率</div>
+                <div class="kpi-value" id="kpiRefund">--</div>
+            </div>
+        </section>
+
+        <div class="charts-row">
+            <section class="chart-section">
+                <h2>月度 GMV 趋势</h2>
+                <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+            </section>
+            <section class="chart-section">
+                <h2>转化漏斗</h2>
+                <div class="chart-wrap"><canvas id="funnelChart"></canvas></div>
+            </section>
+        </div>
+
+        <section class="section">
+            <h2>渠道效率</h2>
+            <div class="table-wrap">
+                <table id="channelTable">
+                    <thead>
+                        <tr>
+                            <th>渠道</th>
+                            <th>GMV</th>
+                            <th>订单</th>
+                            <th>花费</th>
+                            <th>CTR</th>
+                            <th>CVR</th>
+                            <th>CPA</th>
+                            <th>ROAS</th>
+                            <th>动作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>数据挖掘子项目</h2>
+            <div class="cards-grid" id="subprojectCards"></div>
+        </section>
+
+        <section class="section">
+            <h2>经营辅助决策</h2>
+            <div id="decisionsPanel">
+                <div class="health-badge" id="healthBadge">--</div>
+                <div id="decisionsList"></div>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>Git 版本演进路线</h2>
+            <div class="git-roadmap" id="gitRoadmap"></div>
+        </section>
+    </div>
+
+    <footer class="footer">
+        <p>IT 项目管理实践课 — 商城仪表盘与经营辅助决策</p>
+        <button onclick="reloadData()" class="reload-btn">刷新数据</button>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

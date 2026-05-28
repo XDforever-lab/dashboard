@@ -1,0 +1,14 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+*.log
+*.sqlite-shm
+*.sqlite-wal
+server/data/backups/
+.env
+venv/
+test_smoke.txt
+eshop-dashboard-practice/
+exports/*.csv
+server/data/*.sqlite

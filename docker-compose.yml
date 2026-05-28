@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  mall-api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "38173:38173"
+    volumes:
+      - ./server/data:/app/data
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: analytics_dashboard/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./server/data:/data:ro
+    environment:
+      - ESHOP_DB_PATH=/data/eshop.sqlite
+    depends_on:
+      - mall-api
+    restart: unless-stopped
