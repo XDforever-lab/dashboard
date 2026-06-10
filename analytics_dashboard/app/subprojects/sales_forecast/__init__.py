@@ -35,7 +35,7 @@ def run():
             "insights": ["暂无足够数据进行销售预测"]
         }
 
-    daily_gmv = [float(r["daily_gmv"]) for r in daily_rows]
+    daily_gmv = [float(r["daily_gmv"] or 0) for r in daily_rows]
     n = len(daily_gmv)
 
     window = min(n, 30)
@@ -73,7 +73,7 @@ def run():
     category_data = {}
     for row in category_rows:
         cat = row["category_name"]
-        gmv = float(row["daily_gmv"])
+        gmv = float(row["daily_gmv"] or 0)
         if cat not in category_data:
             category_data[cat] = []
         category_data[cat].append(gmv)

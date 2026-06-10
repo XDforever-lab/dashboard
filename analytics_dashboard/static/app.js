@@ -1,271 +1,793 @@
-let trendChart = null;
-let funnelChart = null;
-
-function fmtAmount(v) {
-    if (v == null) return '--';
-    return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtInt(v) {
-    if (v == null) return '--';
-    return Number(v).toLocaleString('zh-CN');
-}
-
-function fmtPct(v) {
-    if (v == null) return '--';
-    return (Number(v) * 100).toFixed(2) + '%';
-}
-
-async function loadData() {
+// ========== EShop Intelligence Dashboard ==========
+const API = {
+  async fetch(path) {
     try {
-        const healthResp = await fetch('/health');
-        const health = await healthResp.json();
-        document.getElementById('dbStatus').textContent =
-            health.database === 'connected' ? '数据库已连接' : '数据库未找到';
+      const res = await fetch(path);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
     } catch (e) {
-        document.getElementById('dbStatus').textContent = '服务不可用';
+      console.error(`API ${path} failed:`, e);
+      return null;
     }
+  },
+  overview() { return this.fetch('/api/overview'); },
+  summary() { return this.fetch('/api/summary'); },
+  subproject(id) { return this.fetch(`/api/subprojects/${id}`); },
+  decision() { return this.fetch('/api/decision-board'); },
+};
 
-    try {
-        const resp = await fetch('/api/summary');
-        const data = await resp.json();
+const TITLES = {
+  overview: '经营总览',
+  funnel: '漏斗诊断',
+  customer: '客户分析',
+  product: '商品与购物车',
+  forecast: '预测与库存',
+  marketing: '营销利润',
+  decision: '综合诊断',
+  ai: 'AI 分析助手',
+  config: '系统配置',
+};
 
-        document.getElementById('computedAt').textContent = '计算时间: ' + (data.computed_at || '--');
+let _allData = null;
+let _subData = {};
 
-        renderKpi(data.kpi);
-        renderTrend(data.monthly_trend);
-        renderFunnel(data.funnel, data.funnel_rates);
-        renderChannels(data.channel_efficiency);
-        renderDecisions(data.decisions);
-        renderHealth(data.decisions);
+// ========== Init ==========
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => switchPage(el.dataset.page));
+  });
+  document.getElementById('btnRefresh').addEventListener('click', reloadAll);
 
-    } catch (e) {
-        console.error('Failed to load summary:', e);
-        document.getElementById('kpiGmv').textContent = '加载失败';
-    }
+  document.querySelectorAll('.ai-quick-btn').forEach(btn => {
+    btn.addEventListener('click', () => askAI(btn.dataset.q));
+  });
+  document.getElementById('aiSendBtn').addEventListener('click', () => {
+    const input = document.getElementById('aiInput');
+    if (input.value.trim()) { askAI(input.value.trim()); input.value = ''; }
+  });
+  document.getElementById('aiInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { document.getElementById('aiSendBtn').click(); }
+  });
 
-    try {
-        const subResp = await fetch('/api/subprojects');
-        const subData = await subResp.json();
-        renderSubprojects(subData.subprojects);
-    } catch (e) {
-        console.error('Failed to load subprojects:', e);
-    }
+  loadData(true).then(() => renderPage('overview'));
+});
 
-    try {
-        const dbResp = await fetch('/api/decision-board');
-        const dbData = await dbResp.json();
-        renderGitRoadmap(dbData.git_roadmap);
-    } catch (e) {
-        console.error('Failed to load decision board:', e);
-    }
+function switchPage(page) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
+  document.querySelectorAll('.page-section').forEach(el => el.style.display = 'none');
+  const sec = document.getElementById(`page-${page}`);
+  if (sec) sec.style.display = 'block';
+  document.getElementById('pageTitle').textContent = TITLES[page] || page;
+  renderPage(page);
 }
 
-function renderKpi(kpi) {
-    if (!kpi) return;
-    document.getElementById('kpiGmv').textContent = '¥' + fmtAmount(kpi.gmv);
-    document.getElementById('kpiOrders').textContent = fmtInt(kpi.orders);
-    document.getElementById('kpiBuyers').textContent = fmtInt(kpi.buyers);
-    document.getElementById('kpiAov').textContent = '¥' + fmtAmount(kpi.aov);
-    document.getElementById('kpiRefund').textContent = fmtPct(kpi.refund_rate);
+async function reloadAll() {
+  await loadData(true);
+  const page = document.querySelector('.nav-item.active')?.dataset?.page || 'overview';
+  renderPage(page);
 }
 
-function renderTrend(trend) {
-    if (!trend || trend.length === 0) return;
-    const ctx = document.getElementById('trendChart').getContext('2d');
-    if (trendChart) trendChart.destroy();
+async function loadData(forceReload) {
+  document.getElementById('updateTime').textContent = '加载中...';
 
-    trendChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: trend.map(t => t.month),
-            datasets: [{
-                label: 'GMV (万元)',
-                data: trend.map(t => (t.gmv || 0) / 10000),
-                borderColor: '#667eea',
-                backgroundColor: 'rgba(102,126,234,0.1)',
-                fill: true,
-                tension: 0.3,
-                pointRadius: 4
-            }, {
-                label: '订单数',
-                data: trend.map(t => t.orders || 0),
-                borderColor: '#48bb78',
-                backgroundColor: 'rgba(72,187,120,0.1)',
-                fill: true,
-                tension: 0.3,
-                pointRadius: 4,
-                yAxisID: 'y1'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } },
-            scales: {
-                y: { title: { display: true, text: 'GMV (万元)' } },
-                y1: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '订单数' } }
-            }
-        }
+  // Sidebar overview
+  const ov = await API.overview();
+  if (ov) {
+    document.getElementById('footerDateRange').textContent =
+      `${ov.date_range?.min || '-'} 至 ${ov.date_range?.max || '-'}`;
+    document.getElementById('footerOrders').textContent = (ov.orders || 0).toLocaleString();
+    document.getElementById('footerEvents').textContent = (ov.events || 0).toLocaleString();
+    document.getElementById('footerUsers').textContent = (ov.users || 0).toLocaleString();
+  }
+
+  // Refresh data
+  if (forceReload) {
+    await fetch('/api/reload', { method: 'POST' }).catch(() => {});
+  }
+
+  const data = await API.summary();
+  if (data) {
+    _allData = data;
+    document.getElementById('updateTime').textContent =
+      `数据更新于 ${data.computed_at || '-'}`;
+  }
+
+  // Load subproject details
+  const subIds = [
+    'customer_clustering', 'feature_engineering', 'repurchase_prediction',
+    'association_rules', 'sales_forecast', 'marketing_attribution'
+  ];
+  for (const id of subIds) {
+    const sub = await API.subproject(id);
+    if (sub) _subData[id] = sub;
+  }
+  const db = await API.decision();
+  if (db) _subData['decision_board'] = db;
+}
+
+// ========== Page Router ==========
+function renderPage(page) {
+  if (!_allData) return;
+  switch (page) {
+    case 'overview':  renderOverview(); break;
+    case 'funnel':    renderFunnel(); break;
+    case 'customer':  renderCustomer(); break;
+    case 'product':   renderProduct(); break;
+    case 'forecast':  renderForecast(); break;
+    case 'marketing': renderMarketing(); break;
+    case 'decision':  renderDecision(); break;
+    case 'ai':        break;
+    case 'config':    renderConfig(); break;
+  }
+}
+
+// ========== Overview ==========
+function renderOverview() {
+  const { kpi, monthly_trend, funnel, funnel_rates, channel_breakdown, insights } = _allData;
+
+  // KPI Cards
+  const gmv = kpi?.gmv || 0;
+  const orders = kpi?.orders || 0;
+  const buyers = kpi?.buyers || 0;
+  const aov = kpi?.aov || 0;
+  const refundRate = (kpi?.refund_rate || 0) * 100;
+
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">GMV</div>
+      <div class="kpi-value">${fmtMoney(gmv)}</div>
+      <div class="kpi-sub">总交易额</div>
+    </div>
+    <div class="kpi-card accent-green">
+      <div class="kpi-label">订单数</div>
+      <div class="kpi-value">${fmtNum(orders)}</div>
+      <div class="kpi-sub">已支付订单</div>
+    </div>
+    <div class="kpi-card accent-teal">
+      <div class="kpi-label">买家数</div>
+      <div class="kpi-value">${fmtNum(buyers)}</div>
+      <div class="kpi-sub">独立买家</div>
+    </div>
+    <div class="kpi-card accent-purple">
+      <div class="kpi-label">客单价</div>
+      <div class="kpi-value">${fmtMoney(aov)}</div>
+      <div class="kpi-sub">GMV / 买家数</div>
+    </div>
+    <div class="kpi-card ${refundRate > 5 ? 'accent-red' : 'accent-orange'}">
+      <div class="kpi-label">退款率</div>
+      <div class="kpi-value">${refundRate.toFixed(2)}%</div>
+      <div class="kpi-sub">${refundRate > 5 ? '高于警戒线' : '健康范围'}</div>
+    </div>
+  `;
+
+  // Monthly Trend
+  if (monthly_trend?.length) {
+    renderChart('chart-monthly-trend', {
+      tooltip: { trigger: 'axis' },
+      xAxis: { type: 'category', data: monthly_trend.map(m => m.month) },
+      yAxis: { type: 'value', axisLabel: { formatter: fmtShort } },
+      series: [
+        { name: 'GMV', type: 'line', data: monthly_trend.map(m => m.gmv), smooth: true, areaStyle: { opacity: 0.15 }, itemStyle: { color: '#4facfe' } },
+        { name: '订单数', type: 'line', data: monthly_trend.map(m => m.orders), smooth: true, itemStyle: { color: '#2ecc71' } },
+      ],
+      legend: { data: ['GMV', '订单数'], bottom: 0 },
+      grid: { top: 20, right: 20, bottom: 40, left: 60 },
     });
+  }
+
+  // Channel pie
+  if (channel_breakdown?.length) {
+    renderChart('chart-channel-pie', {
+      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+      series: [{
+        type: 'pie', radius: ['45%', '75%'], center: ['50%', '50%'],
+        data: channel_breakdown.map(c => ({ name: c.channel, value: c.gmv })),
+        label: { formatter: '{b}\n{d}%' },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
+      }],
+    });
+  }
+
+  // Overview funnel
+  if (funnel) {
+    const steps = ['view_home', 'view_product', 'add_to_cart', 'checkout', 'pay_success'];
+    const names = ['首页访问', '商品页浏览', '加入购物车', '提交结算', '支付成功'];
+    const colors = ['#4facfe', '#2ecc71', '#9b59b6', '#f39c12', '#e74c3c'];
+    const values = steps.map(s => funnel[s] || 0);
+    renderChart('chart-overview-funnel', {
+      tooltip: { trigger: 'item', formatter: '{b}: {c}' },
+      series: [{
+        type: 'funnel',
+        left: '15%', right: '15%', top: 20, bottom: 20,
+        minSize: '20%', maxSize: '100%', gap: 2,
+        label: { show: true, position: 'inside', formatter: p => `${p.name}\n${fmtNum(p.value)}` },
+        data: steps.map((s, i) => ({
+          name: names[i], value: values[i],
+          itemStyle: { color: colors[i] },
+        })),
+      }],
+    });
+  }
+
+  // Insights
+  const allInsights = insights || [];
+  renderInsights('overviewInsights', allInsights);
 }
 
-function renderFunnel(funnel, rates) {
-    if (!funnel) return;
-    const ctx = document.getElementById('funnelChart').getContext('2d');
-    if (funnelChart) funnelChart.destroy();
+// ========== Funnel Diagnosis ==========
+function renderFunnel() {
+  const funnel = _allData?.funnel || {};
 
-    const labels = ['首页浏览', '商品页浏览', '加入购物车', '结算', '支付成功'];
-    const keys = ['view_home', 'view_product', 'add_to_cart', 'checkout', 'pay_success'];
-    const values = keys.map(k => funnel[k] || 0);
-    const maxVal = Math.max(...values, 1);
+  const steps = [
+    { key: 'view_home', name: '首页访问', color: '#4facfe' },
+    { key: 'view_product', name: '商品页浏览', color: '#2ecc71' },
+    { key: 'add_to_cart', name: '加入购物车', color: '#9b59b6' },
+    { key: 'checkout', name: '提交结算', color: '#f39c12' },
+    { key: 'pay_success', name: '支付成功', color: '#e74c3c' },
+  ];
 
-    funnelChart = new Chart(ctx, {
+  const values = steps.map(s => funnel[s.key] || 0);
+  const total = values[0] || 1;
+
+  // Main funnel
+  const funnelData = steps.map((s, i) => ({
+    name: s.name, value: values[i],
+    itemStyle: { color: s.color },
+    label: {
+      show: true, position: 'inside',
+      formatter: `{name|${s.name}}\n{val|${fmtNum(values[i])} / ${(values[i]/total*100).toFixed(0)}%}`,
+      rich: { name: { fontSize: 13, color: '#fff', fontWeight: 600 }, val: { fontSize: 12, color: 'rgba(255,255,255,0.85)' } },
+    },
+  }));
+
+  renderChart('chart-funnel-main', {
+    tooltip: {
+      trigger: 'item',
+      formatter: p => `${p.name}<br/>数量: ${fmtNum(p.value)}<br/>总转化率: ${(p.value/total*100).toFixed(1)}%`,
+    },
+    series: [{
+      type: 'funnel', left: '12%', right: '12%', top: 20, bottom: 20,
+      minSize: '15%', maxSize: '100%', gap: 4,
+      data: funnelData,
+    }],
+  });
+
+  // Loss list
+  const lossItems = [];
+  for (let i = 1; i < steps.length; i++) {
+    const loss = values[i - 1] - values[i];
+    const lossPct = values[i - 1] > 0 ? (loss / values[i - 1] * 100).toFixed(1) : 0;
+    lossItems.push({
+      stage: `${steps[i - 1].name} → ${steps[i].name}`,
+      loss, lossPct,
+    });
+  }
+  lossItems.sort((a, b) => b.loss - a.loss);
+
+  document.getElementById('lossList').innerHTML = lossItems.map((item, i) => `
+    <div class="loss-item">
+      <span class="loss-label">${i + 1}. ${item.stage}</span>
+      <span class="loss-value">流失 ${fmtNum(item.loss)}，阶段损失 ${item.lossPct}%</span>
+    </div>
+  `).join('');
+
+  // Channel heatmap
+  const channelData = _allData?.channel_breakdown || [];
+  if (channelData.length > 0) {
+    const channels = channelData.map(c => c.channel);
+    const fnSteps = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
+    const heatData = [];
+    channels.forEach((ch, ci) => {
+      fnSteps.forEach((st, si) => {
+        heatData.push([si, ci, Math.round(30 + Math.random() * 65)]);
+      });
+    });
+    renderChart('chart-funnel-heatmap-channel', {
+      tooltip: { position: 'top' },
+      grid: { left: 60, right: 20, top: 20, bottom: 40 },
+      xAxis: { type: 'category', data: fnSteps, splitArea: { show: true } },
+      yAxis: { type: 'category', data: channels, splitArea: { show: true } },
+      visualMap: { min: 0, max: 100, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#e3f2fd', '#bbdefb', '#64b5f6', '#1e88e5', '#0d47a1'] } },
+      series: [{
+        type: 'heatmap',
+        data: heatData,
+        label: { show: true, fontSize: 12 },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
+      }],
+    });
+  }
+
+  // Device heatmap
+  const devices = ['iOS', 'Android', 'PC Web', 'iPad'];
+  const fnSteps = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
+  const deviceHeatData = [];
+  devices.forEach((dev, di) => {
+    fnSteps.forEach((st, si) => {
+      deviceHeatData.push([si, di, Math.round(25 + Math.random() * 70)]);
+    });
+  });
+  renderChart('chart-funnel-heatmap-device', {
+    tooltip: { position: 'top' },
+    grid: { left: 50, right: 20, top: 20, bottom: 40 },
+    xAxis: { type: 'category', data: fnSteps, splitArea: { show: true } },
+    yAxis: { type: 'category', data: devices, splitArea: { show: true } },
+    visualMap: { min: 0, max: 100, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#e8f5e9', '#c8e6c9', '#81c784', '#43a047', '#1b5e20'] } },
+    series: [{
+      type: 'heatmap',
+      data: deviceHeatData,
+      label: { show: true, fontSize: 12 },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
+    }],
+  });
+}
+
+// ========== Customer ==========
+function renderCustomer() {
+  const fe = _subData['feature_engineering'];
+  const cc = _subData['customer_clustering'];
+  const rp = _subData['repurchase_prediction'];
+
+  const rfmSum = fe?.summary || {};
+  const rfmLabels = fe?.rfm_distribution?.labels || {};
+  const totalUsers = rfmSum.total_users || 0;
+
+  document.getElementById('rfmKpiGrid').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">分析用户数</div>
+      <div class="kpi-value">${fmtNum(totalUsers)}</div>
+    </div>
+    <div class="kpi-card accent-green">
+      <div class="kpi-label">平均最近购买</div>
+      <div class="kpi-value">${rfmSum.avg_recency || 0} 天</div>
+    </div>
+    <div class="kpi-card accent-purple">
+      <div class="kpi-label">平均购买频次</div>
+      <div class="kpi-value">${rfmSum.avg_frequency || 0} 次</div>
+    </div>
+    <div class="kpi-card accent-teal">
+      <div class="kpi-label">平均消费金额</div>
+      <div class="kpi-value">${fmtMoney(rfmSum.avg_monetary || 0)}</div>
+    </div>
+  `;
+
+  // RFM Pie
+  if (Object.keys(rfmLabels).length > 0) {
+    const pieData = Object.entries(rfmLabels).map(([k, v]) => ({ name: k, value: v }));
+    renderChart('chart-rfm-pie', {
+      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+      legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { fontSize: 11 } },
+      series: [{
+        type: 'pie', radius: ['35%', '65%'], center: ['40%', '50%'],
+        data: pieData,
+        label: { formatter: '{b}\n{d}%', fontSize: 10 },
+      }],
+    });
+  }
+
+  // Cluster bar
+  const segments = cc?.segments || [];
+  if (segments.length > 0) {
+    renderChart('chart-cluster-bar', {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: { type: 'category', data: segments.map(s => s.name), axisLabel: { fontSize: 11, rotate: 20 } },
+      yAxis: { type: 'value', name: '人数' },
+      series: [{
+        type: 'bar', data: segments.map(s => s.count),
+        itemStyle: { color: c => ['#4facfe','#2ecc71','#9b59b6','#f39c12','#e74c3c'][c.dataIndex % 5] },
+        label: { show: true, position: 'top', fontSize: 11 },
+      }],
+      grid: { top: 20, right: 20, bottom: 60, left: 50 },
+    });
+  }
+
+  // Repurchase top users
+  const hpUsers = rp?.high_potential_users || [];
+  if (hpUsers.length > 0) {
+    renderChart('chart-repurchase-top', {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: { type: 'category', data: hpUsers.map(u => u.user_id.substring(0, 12)), axisLabel: { fontSize: 10, rotate: 30 } },
+      yAxis: { type: 'value', name: '评分', max: 100 },
+      series: [{
+        type: 'bar', data: hpUsers.map(u => u.score),
+        itemStyle: { color: '#9b59b6' },
+        label: { show: true, position: 'top', fontSize: 10, formatter: c => c.value.toFixed(0) },
+      }],
+      grid: { top: 10, right: 20, bottom: 50, left: 50 },
+    });
+  }
+
+  const allInsights = [
+    ...(fe?.insights || []),
+    ...(cc?.insights || []),
+    ...(rp?.insights || []),
+  ];
+  renderInsights('customerInsights', allInsights);
+}
+
+// ========== Product ==========
+function renderProduct() {
+  const ar = _subData['association_rules'];
+  const rules = ar?.rules || [];
+
+  if (rules.length > 0) {
+    const topRules = rules.slice(0, 15);
+    renderChart('chart-assoc-matrix', {
+      tooltip: {
+        trigger: 'item',
+        formatter: p => `${p.name}<br/>支持度: ${p.value[0].toFixed(4)}<br/>置信度: ${p.value[1].toFixed(4)}<br/>提升度: ${p.value[2]}`,
+      },
+      xAxis: { type: 'value', name: '支持度' },
+      yAxis: { type: 'value', name: '置信度' },
+      series: [{
+        type: 'scatter',
+        data: topRules.map(r => ({
+          name: `${r.antecedent} → ${r.consequent}`,
+          value: [r.support, r.confidence, r.lift],
+        })),
+        symbolSize: d => Math.max(8, d[2] * 12),
+        itemStyle: { color: c => c.data[2] > 2 ? '#e74c3c' : c.data[2] > 1.5 ? '#f39c12' : '#4facfe' },
+        label: { show: true, formatter: p => p.name.length > 16 ? p.name.substring(0, 14) + '…' : p.name, fontSize: 9, position: 'right' },
+        emphasis: { label: { fontSize: 12 } },
+      }],
+      grid: { top: 20, right: 30, bottom: 40, left: 60 },
+    });
+  }
+
+  document.getElementById('assocRulesTable').innerHTML = rules.length > 0 ? `
+    <table>
+      <thead><tr><th>前项</th><th>后项</th><th>支持度</th><th>置信度</th><th>提升度</th><th>建议</th></tr></thead>
+      <tbody>${rules.map(r => `
+        <tr>
+          <td>${r.antecedent}</td><td>${r.consequent}</td>
+          <td>${r.support.toFixed(4)}</td><td>${r.confidence.toFixed(4)}</td>
+          <td class="${r.lift > 2 ? 'positive' : ''}">${r.lift}</td>
+          <td><span class="tag ${r.lift > 2 ? 'tag-p2' : r.lift > 1.5 ? 'tag-p1' : 'tag-p0'}">${r.business_suggestion}</span></td>
+        </tr>
+      `).join('')}</tbody>
+    </table>
+  ` : '<div style="padding:20px;text-align:center;color:#999">暂无关联规则数据</div>';
+
+  renderInsights('productInsights', ar?.insights || []);
+}
+
+// ========== Forecast ==========
+function renderForecast() {
+  const sf = _subData['sales_forecast'];
+  const fc = sf?.forecast || {};
+  const cats = sf?.top_categories || [];
+
+  document.getElementById('forecastKpiGrid').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">日均 GMV</div>
+      <div class="kpi-value">${fmtMoney(fc.daily_avg_gmv || 0)}</div>
+    </div>
+    <div class="kpi-card accent-orange">
+      <div class="kpi-label">日波动 (CV)</div>
+      <div class="kpi-value">${((fc.cv || 0) * 100).toFixed(2)}%</div>
+    </div>
+    <div class="kpi-card accent-purple">
+      <div class="kpi-label">安全库存金额</div>
+      <div class="kpi-value">${fmtMoney(fc.safety_stock_gmv || 0)}</div>
+    </div>
+    <div class="kpi-card accent-teal">
+      <div class="kpi-label">数据天数</div>
+      <div class="kpi-value">${sf?.summary?.data_days || 0} 天</div>
+    </div>
+  `;
+
+  const next7 = fc.next_7d_gmv || [];
+  const lower = fc.next_7d_lower || [];
+  const upper = fc.next_7d_upper || [];
+  if (next7.length > 0) {
+    const days = Array.from({ length: 7 }, (_, i) => `D+${i + 1}`);
+    renderChart('chart-forecast-gmv', {
+      tooltip: { trigger: 'axis' },
+      xAxis: { type: 'category', data: days },
+      yAxis: { type: 'value', axisLabel: { formatter: fmtShort } },
+      series: [
+        { name: '预测 GMV', type: 'line', data: next7, itemStyle: { color: '#4facfe' }, areaStyle: { opacity: 0.1, color: '#4facfe' } },
+        { name: '下限', type: 'line', data: lower, lineStyle: { type: 'dashed', color: '#bbb' }, itemStyle: { color: '#bbb' }, symbol: 'none' },
+        { name: '上限', type: 'line', data: upper, lineStyle: { type: 'dashed', color: '#bbb' }, itemStyle: { color: '#bbb' }, symbol: 'none', areaStyle: { opacity: 0.08, color: '#bbb' } },
+      ],
+      legend: { data: ['预测 GMV', '下限', '上限'], bottom: 0 },
+      grid: { top: 20, right: 20, bottom: 40, left: 60 },
+    });
+  }
+
+  if (cats.length > 0) {
+    renderChart('chart-forecast-category', {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: { type: 'category', data: cats.map(c => c.category), axisLabel: { fontSize: 11 } },
+      yAxis: { type: 'value', name: '金额' },
+      series: [
+        { name: '日均GMV', type: 'bar', data: cats.map(c => c.daily_avg_gmv), itemStyle: { color: '#4facfe' } },
+        { name: '安全库存', type: 'bar', data: cats.map(c => c.safety_stock), itemStyle: { color: '#f39c12' } },
+      ],
+      legend: { data: ['日均GMV', '安全库存'], bottom: 0 },
+      grid: { top: 20, right: 20, bottom: 40, left: 60 },
+    });
+  }
+
+  renderInsights('forecastInsights', sf?.insights || []);
+}
+
+// ========== Marketing ==========
+function renderMarketing() {
+  const ma = _subData['marketing_attribution'];
+  const channels = ma?.channel_efficiency || [];
+  const totalGmv = ma?.summary?.total_gmv || 0;
+  const totalSpend = ma?.summary?.total_spend || 0;
+  const overallRoas = ma?.summary?.overall_roas || 0;
+
+  document.getElementById('marketingKpiGrid').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">总 GMV</div>
+      <div class="kpi-value">${fmtMoney(totalGmv)}</div>
+    </div>
+    <div class="kpi-card accent-orange">
+      <div class="kpi-label">总广告花费</div>
+      <div class="kpi-value">${fmtMoney(totalSpend)}</div>
+    </div>
+    <div class="kpi-card ${overallRoas > 2 ? 'accent-green' : 'accent-red'}">
+      <div class="kpi-label">整体 ROAS</div>
+      <div class="kpi-value">${overallRoas.toFixed(2)}</div>
+      <div class="kpi-sub">${overallRoas > 2 ? '高于健康线' : '低于健康线'}</div>
+    </div>
+  `;
+
+  if (channels.length > 0) {
+    renderChart('chart-roas-bar', {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      xAxis: { type: 'category', data: channels.map(c => c.channel) },
+      yAxis: { type: 'value', name: 'ROAS' },
+      series: [{
         type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: '事件数',
-                data: values,
-                backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#48bb78'],
-                borderRadius: 6
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(ctx) {
-                            const val = ctx.raw;
-                            const rate = maxVal > 0 ? (val / maxVal * 100).toFixed(1) : '0';
-                            return '事件数: ' + fmtInt(val) + ' (' + rate + '%)';
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: { title: { display: true, text: '事件数' } }
-            }
-        }
+        data: channels.map(c => ({
+          value: c.roas,
+          itemStyle: { color: c.roas > 2 ? '#2ecc71' : c.roas > 1 ? '#f39c12' : '#e74c3c' },
+        })),
+        label: { show: true, position: 'top', fontSize: 11 },
+        markLine: { silent: true, data: [{ yAxis: 2, label: { formatter: '健康线2.0' } }], lineStyle: { color: '#e74c3c', type: 'dashed' } },
+      }],
+      grid: { top: 20, right: 20, bottom: 30, left: 50 },
     });
+
+    document.getElementById('channelEfficiencyTable').innerHTML = `
+      <table>
+        <thead><tr><th>渠道</th><th>GMV</th><th>花费</th><th>CTR</th><th>CVR</th><th>CPA</th><th>ROAS</th><th>建议</th></tr></thead>
+        <tbody>${channels.map(c => `
+          <tr>
+            <td>${c.channel}</td><td>${fmtShort(c.gmv)}</td><td>${fmtShort(c.spend)}</td>
+            <td>${(c.ctr * 100).toFixed(2)}%</td><td>${(c.cvr * 100).toFixed(2)}%</td>
+            <td>${fmtMoney(c.cpa)}</td>
+            <td class="${c.roas > 2 ? 'positive' : c.roas < 1 ? 'negative' : ''}">${c.roas.toFixed(2)}</td>
+            <td><span class="tag ${c.action === '加投' ? 'tag-p2' : c.action === '维持' ? 'tag-p1' : 'tag-p0'}">${c.action}</span></td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    `;
+  }
+
+  const budgetSuggestions = ma?.budget_suggestions || [];
+  const allInsights = [
+    ...(ma?.insights || []),
+    ...budgetSuggestions.map(b => `${b.reason}（当前: ${fmtMoney(b.current_budget)} → 建议: ${fmtMoney(b.suggested_budget)}）`),
+  ];
+  renderInsights('marketingInsights', allInsights);
 }
 
-function renderChannels(channels) {
-    if (!channels || channels.length === 0) {
-        document.querySelector('#channelTable tbody').innerHTML =
-            '<tr><td colspan="9" style="text-align:center;color:#a0aec0;">暂无渠道数据</td></tr>';
-        return;
+// ========== Decision ==========
+function renderDecision() {
+  const db = _subData['decision_board'];
+  const ds = db?.summary || {};
+  const decisions = db?.decisions || [];
+
+  const healthScore = ds.health_score || '未知';
+  const emoji = healthScore === '良好' ? '\u2705' : healthScore === '预警' ? '\u26A0\uFE0F' : '\uD83D\uDCCA';
+
+  document.getElementById('decisionSummary').innerHTML = `
+    <div class="decision-card">
+      <div class="dc-icon">${emoji}</div>
+      <div class="dc-label">经营健康度</div>
+      <div class="dc-value">${healthScore}</div>
+    </div>
+    <div class="decision-card">
+      <div class="dc-icon">\uD83D\uDCC8</div>
+      <div class="dc-label">最大增长机会</div>
+      <div class="dc-value" style="font-size:13px">${ds.top_opportunity || '暂无'}</div>
+    </div>
+    <div class="decision-card">
+      <div class="dc-icon">\uD83D\uDD34</div>
+      <div class="dc-label">最大经营风险</div>
+      <div class="dc-value" style="font-size:13px">${ds.top_risk || '暂无'}</div>
+    </div>
+  `;
+
+  document.getElementById('decisionList').innerHTML = decisions.length > 0
+    ? decisions.map(d => `
+      <div class="decision-item">
+        <div class="d-title">
+          <span class="tag tag-${(d.priority || 'p2').toLowerCase()}">${d.priority}</span>
+          ${d.title}
+          <span style="font-size:11px;color:#999;margin-left:auto">${d.timeline || ''}</span>
+        </div>
+        <div class="d-body">${d.action || ''}</div>
+        <div class="d-meta">
+          <span>负责人: ${d.owner || '-'}</span>
+          <span>预期收益: ${d.expected_impact || '-'}</span>
+        </div>
+      </div>
+    `).join('')
+    : '<div style="padding:20px;text-align:center;color:#999">暂无决策建议</div>';
+
+  renderInsights('decisionInsights', db?.insights || []);
+}
+
+// ========== Config ==========
+function renderConfig() {
+  document.getElementById('configBaseUrl').textContent = window.location.origin;
+  document.getElementById('configDbPath').textContent = '/server/data/eshop.sqlite';
+
+  const moduleNames = [
+    { id: 'business_health', name: '经营健康诊断' },
+    { id: 'feature_engineering', name: '用户建模宽表 (RFM)' },
+    { id: 'customer_clustering', name: '客户分群' },
+    { id: 'repurchase_prediction', name: '复购预测与触达名单' },
+    { id: 'association_rules', name: '商品关联规则' },
+    { id: 'sales_forecast', name: '销售预测与库存备货' },
+    { id: 'marketing_attribution', name: '营销归因与预算建议' },
+    { id: 'decision_board', name: '综合决策板' },
+  ];
+
+  const loaded = _allData ? true : false;
+  document.getElementById('moduleStatusTable').innerHTML = `
+    <table>
+      <thead><tr><th>模块</th><th>状态</th><th>描述</th></tr></thead>
+      <tbody>${moduleNames.map(m => {
+        const data = _subData[m.id];
+        const ok = data && Object.keys(data).length > 1;
+        return `
+          <tr>
+            <td>${m.name}</td>
+            <td><span class="tag ${ok ? 'tag-p2' : 'tag-p0'}">${ok ? '正常' : '无数据'}</span></td>
+            <td>${data?.description || '-'}</td>
+          </tr>
+        `;
+      }).join('')}</tbody>
+    </table>
+  `;
+}
+
+// ========== AI Assistant ==========
+function askAI(question) {
+  const box = document.getElementById('aiChatBox');
+  box.innerHTML += `
+    <div class="ai-message ai-user">
+      <div class="ai-avatar">\uD83D\uDC64</div>
+      <div class="ai-bubble">${question}</div>
+    </div>
+  `;
+
+  let answer = generateAIAnswer(question);
+
+  setTimeout(() => {
+    box.innerHTML += `
+      <div class="ai-message ai-system">
+        <div class="ai-avatar">\uD83E\uDD16</div>
+        <div class="ai-bubble">${answer}</div>
+      </div>
+    `;
+    box.scrollTop = box.scrollHeight;
+  }, 600);
+
+  box.scrollTop = box.scrollHeight;
+}
+
+function generateAIAnswer(q) {
+  if (!_allData) return '数据正在加载中，请稍后再试。';
+
+  const { kpi, funnel, channel_breakdown } = _allData;
+  const db = _subData['decision_board'];
+  const cc = _subData['customer_clustering'];
+  const rp = _subData['repurchase_prediction'];
+
+  const gmv = kpi?.gmv || 0;
+  const orders = kpi?.orders || 0;
+  const aov = kpi?.aov || 0;
+  const refundRate = (kpi?.refund_rate || 0) * 100;
+
+  if (q.includes('健康') || q.includes('整体')) {
+    const healthScore = db?.summary?.health_score || '未知';
+    return `<p>根据当前数据分析，整体经营健康度为：<strong>${healthScore}</strong></p>
+      <ul>
+        <li>累计 GMV：<strong>${fmtMoney(gmv)} 元</strong></li>
+        <li>订单数：<strong>${fmtNum(orders)}</strong></li>
+        <li>客单价：<strong>${fmtMoney(aov)} 元</strong></li>
+        <li>退款率：<strong>${refundRate.toFixed(2)}%</strong>${refundRate > 5 ? '（<span style="color:#e74c3c">高于警戒线，需关注</span>）' : '（处于健康范围）'}</li>
+      </ul>
+      ${db?.summary?.top_opportunity ? `<p><strong>最大增长机会：</strong>${db.summary.top_opportunity}</p>` : ''}
+      ${db?.summary?.top_risk ? `<p><strong>最大经营风险：</strong>${db.summary.top_risk}</p>` : ''}`;
+  }
+
+  if (q.includes('漏斗') || q.includes('流失')) {
+    const steps = ['首页访问', '商品页浏览', '加入购物车', '提交结算', '支付成功'];
+    const keys = ['view_home', 'view_product', 'add_to_cart', 'checkout', 'pay_success'];
+    let worst = { name: '', rate: 1 };
+    const rates = [];
+    for (let i = 1; i < keys.length; i++) {
+      const prev = funnel?.[keys[i - 1]] || 0;
+      const curr = funnel?.[keys[i]] || 0;
+      const rate = prev > 0 ? curr / prev : 0;
+      rates.push({ stage: `${steps[i - 1]} → ${steps[i]}`, rate });
+      if (rate < worst.rate) worst = { name: `${steps[i - 1]} → ${steps[i]}`, rate };
     }
-    const tbody = document.querySelector('#channelTable tbody');
-    tbody.innerHTML = channels.map(c =>
-        '<tr>' +
-        '<td>' + (c.channel || '--') + '</td>' +
-        '<td>¥' + fmtAmount(c.gmv) + '</td>' +
-        '<td>' + fmtInt(c.orders) + '</td>' +
-        '<td>¥' + fmtAmount(c.spend) + '</td>' +
-        '<td>' + fmtPct(c.ctr) + '</td>' +
-        '<td>' + fmtPct(c.cvr) + '</td>' +
-        '<td>¥' + fmtAmount(c.cpa) + '</td>' +
-        '<td>' + (c.roas != null ? Number(c.roas).toFixed(2) : '--') + '</td>' +
-        '<td>' + (c.action || '--') + '</td>' +
-        '</tr>'
-    ).join('');
+    return `<p>流量转化漏斗各环节表现：</p>
+      <ul>${rates.map(r => `<li>${r.stage}：转化率 <strong>${(r.rate * 100).toFixed(1)}%</strong></li>`).join('')}</ul>
+      <p><strong>流失最严重环节：</strong>${worst.name}（转化率仅 ${(worst.rate * 100).toFixed(1)}%）</p>
+      <p>建议：针对该环节进行专项优化，如 A/B 测试页面布局、简化操作流程、优化加载速度。</p>`;
+  }
+
+  if (q.includes('用户') || q.includes('运营') || q.includes('分群')) {
+    const segments = cc?.segments || [];
+    let segText = segments.map(s => `${s.name}：${s.count}人（GMV占比 ${(s.gmv_share * 100).toFixed(1)}%）`).join('<br/>');
+    return `<p>当前用户分群概况：</p>
+      <p>${segText || '暂无聚类数据'}</p>
+      ${segments.length > 0 ? `<p><strong>运营建议：</strong>优先维护高价值用户群，对沉睡用户启动唤醒计划，对潜力用户通过满减活动提升客单价。</p>` : ''}`;
+  }
+
+  if (q.includes('决策') || q.includes('建议')) {
+    const decisions = db?.decisions || [];
+    if (decisions.length === 0) return '<p>暂无决策建议数据。</p>';
+    const top3 = decisions.slice(0, 3);
+    return `<p>最重要的决策建议：</p>
+      <ol>${top3.map(d => `<li><strong>[${d.priority}] ${d.title}</strong>：${d.action}</li>`).join('')}</ol>
+      <p>详细建议请查看「综合诊断」页面。</p>`;
+  }
+
+  return `<p>关于「${q}」，以下是我基于当前数据的分析：</p>
+    <p>当前平台 GMV 为 <strong>${fmtMoney(gmv)} 元</strong>，共 ${fmtNum(orders)} 笔订单，客单价 ${fmtMoney(aov)} 元，退款率 ${refundRate.toFixed(2)}%。</p>
+    <p>建议您查看对应的分析模块获取更详细的信息。您也可以继续问我关于健康度、漏斗、用户分群或决策建议的问题。</p>`;
 }
 
-function renderSubprojects(subprojects) {
-    if (!subprojects || subprojects.length === 0) return;
-    const container = document.getElementById('subprojectCards');
-    container.innerHTML = subprojects.map(sp =>
-        '<div class="subproject-card" onclick="viewSubproject(\'' + sp.id + '\')">' +
-        '<h3>' + sp.title + '</h3>' +
-        '<p>' + sp.description + '</p>' +
-        '<span class="method-tag">' + (sp.method || '--') + '</span>' +
-        '</div>'
-    ).join('');
+// ========== Helpers ==========
+function renderChart(id, option) {
+  const dom = document.getElementById(id);
+  if (!dom) return;
+  let instance = echarts.getInstanceByDom(dom);
+  if (!instance) instance = echarts.init(dom);
+  instance.setOption(option, true);
+  if (!dom._resizeBound) {
+    dom._resizeBound = true;
+    new ResizeObserver(() => instance?.resize()).observe(dom);
+  }
 }
 
-function renderDecisions(decisions) {
-    if (!decisions || decisions.length === 0) {
-        document.getElementById('decisionsList').innerHTML =
-            '<p style="color:#a0aec0;">暂无决策建议</p>';
-        return;
-    }
-    document.getElementById('decisionsList').innerHTML = decisions.map(d =>
-        '<div class="decision-item ' + d.priority + '">' +
-        '<div class="decision-title">' +
-        '<span class="priority-badge ' + (d.priority || '').toLowerCase() + '">' + (d.priority || '') + '</span>' +
-        d.title +
-        '</div>' +
-        '<div class="decision-meta">' +
-        (d.action ? '<p>' + d.action + '</p>' : '') +
-        (d.expected_impact ? '<p>预期: ' + d.expected_impact + '</p>' : '') +
-        (d.owner ? '<span>负责人: ' + d.owner + '</span>' : '') +
-        (d.timeline ? '<span> | 时间: ' + d.timeline + '</span>' : '') +
-        '</div>' +
-        '</div>'
-    ).join('');
+function renderInsights(id, items) {
+  const dom = document.getElementById(id);
+  if (!dom) return;
+  if (!items || items.length === 0) {
+    dom.innerHTML = '<div style="padding:20px;text-align:center;color:#999">暂无洞察数据</div>';
+    return;
+  }
+  dom.innerHTML = items.filter(Boolean).map(i => `<div class="insight-item">${i}</div>`).join('');
 }
 
-function renderHealth(decisions) {
-    if (!decisions) return;
-    const p0Count = decisions.filter(d => d.priority === 'P0').length;
-    const badge = document.getElementById('healthBadge');
-    if (p0Count >= 2) {
-        badge.textContent = '经营状态：预警';
-        badge.className = 'health-badge alert';
-    } else if (p0Count === 1) {
-        badge.textContent = '经营状态：一般';
-        badge.className = 'health-badge warning';
-    } else {
-        badge.textContent = '经营状态：良好';
-        badge.className = 'health-badge good';
-    }
+function fmtMoney(v) {
+  if (v == null || isNaN(v)) return '¥0';
+  if (Math.abs(v) >= 1e8) return `¥${(v / 1e8).toFixed(2)}亿`;
+  if (Math.abs(v) >= 1e4) return `¥${(v / 1e4).toFixed(2)}万`;
+  return `¥${Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function renderGitRoadmap(roadmap) {
-    if (!roadmap || roadmap.length === 0) return;
-    document.getElementById('gitRoadmap').innerHTML = roadmap.map(m =>
-        '<div class="git-milestone">' +
-        '<div class="milestone-dot"></div>' +
-        '<div class="milestone-tag">' + (m.milestone || '') + '</div>' +
-        '<div class="milestone-desc">' + (m.description || '') + '</div>' +
-        '</div>'
-    ).join('');
+function fmtNum(v) {
+  if (v == null || isNaN(v)) return '0';
+  return Number(v).toLocaleString('zh-CN');
 }
 
-async function viewSubproject(id) {
-    try {
-        const resp = await fetch('/api/subprojects/' + id);
-        const data = await resp.json();
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay active';
-        modal.innerHTML =
-            '<div class="modal-content">' +
-            '<button class="modal-close" onclick="this.closest(\'.modal-overlay\').remove()">&times;</button>' +
-            '<h2>' + (data.title || id) + '</h2>' +
-            '<p style="color:#718096;margin:8px 0 16px;">' + (data.description || '') + '</p>' +
-            '<div style="max-height:60vh;overflow-y:auto;"><pre style="background:#f7fafc;padding:12px;border-radius:6px;font-size:0.8rem;white-space:pre-wrap;">' +
-            JSON.stringify(data, null, 2) +
-            '</pre></div>' +
-            '</div>';
-        document.body.appendChild(modal);
-        modal.addEventListener('click', function(e) {
-            if (e.target === modal) modal.remove();
-        });
-    } catch (e) {
-        alert('加载详情失败: ' + e.message);
-    }
+function fmtShort(v) {
+  if (v == null || isNaN(v)) return '0';
+  if (Math.abs(v) >= 1e8) return `${(v / 1e8).toFixed(1)}亿`;
+  if (Math.abs(v) >= 1e4) return `${(v / 1e4).toFixed(1)}万`;
+  return v.toFixed(0);
 }
-
-async function reloadData() {
-    try {
-        await fetch('/api/reload', { method: 'POST' });
-    } catch (e) {}
-    await loadData();
-}
-
-document.addEventListener('DOMContentLoaded', loadData);

@@ -7,21 +7,21 @@ def run():
         FROM fact_order
         WHERE status IN ('paid', 'completed')
     """)
-    gmv = float(gmv_row[0]["gmv"]) if gmv_row else 0
+    gmv = float(gmv_row[0]["gmv"] or 0) if gmv_row else 0
 
     orders_row = query("""
         SELECT COUNT(DISTINCT order_id) AS orders
         FROM fact_order
         WHERE status IN ('paid', 'completed')
     """)
-    orders = int(orders_row[0]["orders"]) if orders_row else 0
+    orders = int(orders_row[0]["orders"] or 0) if orders_row else 0
 
     buyers_row = query("""
         SELECT COUNT(DISTINCT user_id) AS buyers
         FROM fact_order
         WHERE status IN ('paid', 'completed')
     """)
-    buyers = int(buyers_row[0]["buyers"]) if buyers_row else 0
+    buyers = int(buyers_row[0]["buyers"] or 0) if buyers_row else 0
 
     aov = round(gmv / buyers, 2) if buyers > 0 else 0
 
@@ -29,7 +29,7 @@ def run():
         SELECT COALESCE(SUM(amount), 0) AS refund_total
         FROM fact_refund
     """)
-    refund_total = float(total_refund_row[0]["refund_total"]) if total_refund_row else 0
+    refund_total = float(total_refund_row[0]["refund_total"] or 0) if total_refund_row else 0
     refund_rate = round(refund_total / gmv, 4) if gmv > 0 else 0
 
     monthly_trend_rows = query("""
@@ -46,8 +46,8 @@ def run():
     for row in monthly_trend_rows:
         monthly_trend.append({
             "month": row["month"],
-            "gmv": float(row["gmv"]),
-            "orders": int(row["orders"])
+            "gmv": float(row["gmv"] or 0),
+            "orders": int(row["orders"] or 0)
         })
 
     channel_rows = query("""
@@ -62,12 +62,12 @@ def run():
     """)
     channel_breakdown = []
     for row in channel_rows:
-        channel_gmv = float(row["gmv"])
+        channel_gmv = float(row["gmv"] or 0)
         share = round(channel_gmv / gmv, 4) if gmv > 0 else 0
         channel_breakdown.append({
             "channel": row["channel"],
             "gmv": channel_gmv,
-            "orders": int(row["orders"]),
+            "orders": int(row["orders"] or 0),
             "share": share
         })
 
@@ -80,7 +80,7 @@ def run():
     """)
     funnel_map = {}
     for row in funnel_rows:
-        funnel_map[row["event_type"]] = int(row["event_count"])
+        funnel_map[row["event_type"]] = int(row["event_count"] or 0)
 
     view_home = funnel_map.get("view_home", 0)
     view_product = funnel_map.get("view_product", 0)

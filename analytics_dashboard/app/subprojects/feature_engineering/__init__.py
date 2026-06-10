@@ -32,9 +32,9 @@ def run():
     for row in rows:
         users.append({
             "user_id": row["user_id"],
-            "recency": int(row["recency"]),
-            "frequency": int(row["frequency"]),
-            "monetary": float(row["monetary"])
+            "recency": int(row["recency"] or 0),
+            "frequency": int(row["frequency"] or 0),
+            "monetary": float(row["monetary"] or 0)
         })
 
     recency_values = [u["recency"] for u in users]

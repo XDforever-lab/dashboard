@@ -73,6 +73,29 @@ def health():
     }
 
 
+@app.get("/api/overview")
+def api_overview():
+    from app.data_access import query
+    date_range = query("""
+        SELECT MIN(order_date) AS min_date, MAX(order_date) AS max_date
+        FROM fact_order
+    """)
+    order_count = query("SELECT COUNT(DISTINCT order_id) AS c FROM fact_order WHERE status IN ('paid', 'completed')")
+    event_count = query("SELECT COUNT(*) AS c FROM fact_traffic")
+    user_count = query("SELECT COUNT(DISTINCT user_id) AS c FROM dim_user")
+    sku_count = query("SELECT COUNT(DISTINCT sku_id) AS c FROM dim_product")
+    return {
+        "date_range": {
+            "min": date_range[0]["min_date"] if date_range else None,
+            "max": date_range[0]["max_date"] if date_range else None
+        },
+        "orders": order_count[0]["c"] if order_count else 0,
+        "events": event_count[0]["c"] if event_count else 0,
+        "users": user_count[0]["c"] if user_count else 0,
+        "products": sku_count[0]["c"] if sku_count else 0
+    }
+
+
 @app.get("/api/summary")
 def api_summary():
     results = _get_all_results()

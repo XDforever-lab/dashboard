@@ -1,104 +1,292 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>商城经营仪表盘</title>
-    <link rel="stylesheet" href="/static/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EShop Intelligence 经营分析与数据挖掘系统</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-    <header class="header">
-        <h1>商城经营仪表盘与辅助决策系统</h1>
-        <div class="header-meta">
-            <span class="status-dot online"></span>
-            <span id="dbStatus">数据库连接中...</span>
-            <span class="separator">|</span>
-            <span id="computedAt"></span>
-        </div>
-    </header>
-
-    <div class="container">
-        <section class="kpi-section" id="kpiSection">
-            <div class="kpi-card">
-                <div class="kpi-label">GMV</div>
-                <div class="kpi-value" id="kpiGmv">--</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">订单数</div>
-                <div class="kpi-value" id="kpiOrders">--</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">购买用户</div>
-                <div class="kpi-value" id="kpiBuyers">--</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">客单价</div>
-                <div class="kpi-value" id="kpiAov">--</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">退款率</div>
-                <div class="kpi-value" id="kpiRefund">--</div>
-            </div>
-        </section>
-
-        <div class="charts-row">
-            <section class="chart-section">
-                <h2>月度 GMV 趋势</h2>
-                <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
-            </section>
-            <section class="chart-section">
-                <h2>转化漏斗</h2>
-                <div class="chart-wrap"><canvas id="funnelChart"></canvas></div>
-            </section>
-        </div>
-
-        <section class="section">
-            <h2>渠道效率</h2>
-            <div class="table-wrap">
-                <table id="channelTable">
-                    <thead>
-                        <tr>
-                            <th>渠道</th>
-                            <th>GMV</th>
-                            <th>订单</th>
-                            <th>花费</th>
-                            <th>CTR</th>
-                            <th>CVR</th>
-                            <th>CPA</th>
-                            <th>ROAS</th>
-                            <th>动作</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </section>
-
-        <section class="section">
-            <h2>数据挖掘子项目</h2>
-            <div class="cards-grid" id="subprojectCards"></div>
-        </section>
-
-        <section class="section">
-            <h2>经营辅助决策</h2>
-            <div id="decisionsPanel">
-                <div class="health-badge" id="healthBadge">--</div>
-                <div id="decisionsList"></div>
-            </div>
-        </section>
-
-        <section class="section">
-            <h2>Git 版本演进路线</h2>
-            <div class="git-roadmap" id="gitRoadmap"></div>
-        </section>
+  <!-- ========== 左侧导航 ========== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">EI</div>
+      <span class="brand-text">EShop Intelligence</span>
     </div>
 
-    <footer class="footer">
-        <p>IT 项目管理实践课 — 商城仪表盘与经营辅助决策</p>
-        <button onclick="reloadData()" class="reload-btn">刷新数据</button>
-    </footer>
+    <nav class="sidebar-nav" id="sidebarNav">
+      <div class="nav-item active" data-page="overview">
+        <span class="nav-icon">&#x1F4CA;</span>
+        <span>经营总览</span>
+      </div>
+      <div class="nav-item" data-page="funnel">
+        <span class="nav-icon">&#x1F50D;</span>
+        <span>漏斗诊断</span>
+      </div>
+      <div class="nav-item" data-page="customer">
+        <span class="nav-icon">&#x1F465;</span>
+        <span>客户分析</span>
+      </div>
+      <div class="nav-item" data-page="product">
+        <span class="nav-icon">&#x1F6CD;</span>
+        <span>商品与购物车</span>
+      </div>
+      <div class="nav-item" data-page="forecast">
+        <span class="nav-icon">&#x1F4C8;</span>
+        <span>预测与库存</span>
+      </div>
+      <div class="nav-item" data-page="marketing">
+        <span class="nav-icon">&#x1F4E3;</span>
+        <span>营销利润</span>
+      </div>
+      <div class="nav-item" data-page="decision">
+        <span class="nav-icon">&#x1F3AF;</span>
+        <span>综合诊断</span>
+      </div>
+      <div class="nav-item" data-page="ai">
+        <span class="nav-icon">&#x1F916;</span>
+        <span>AI 分析助手</span>
+      </div>
+      <div class="nav-item" data-page="config">
+        <span class="nav-icon">&#x2699;</span>
+        <span>系统配置</span>
+      </div>
+    </nav>
 
-    <script src="/static/app.js"></script>
+    <div class="sidebar-footer" id="sidebarFooter">
+      <div class="footer-title">数据范围</div>
+      <div class="footer-item" id="footerDateRange">加载中...</div>
+      <div class="footer-item">订单：<span id="footerOrders">-</span></div>
+      <div class="footer-item">事件：<span id="footerEvents">-</span></div>
+      <div class="footer-item">用户：<span id="footerUsers">-</span></div>
+    </div>
+  </aside>
+
+  <!-- ========== 主内容区 ========== -->
+  <main class="main-content">
+
+    <!-- 页面头部 -->
+    <header class="page-header" id="pageHeader">
+      <h1 id="pageTitle">经营总览</h1>
+      <div class="header-actions">
+        <span class="update-time" id="updateTime">数据加载中...</span>
+        <button class="btn btn-sm btn-outline" id="btnRefresh" title="刷新数据">&#x21BB; 刷新</button>
+      </div>
+    </header>
+
+    <!-- ===== 经营总览 ===== -->
+    <section class="page-section" id="page-overview">
+      <div class="kpi-grid" id="kpiGrid"></div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>月度 GMV 趋势</h3></div>
+          <div class="chart-body" id="chart-monthly-trend"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>渠道贡献分布</h3></div>
+          <div class="chart-body" id="chart-channel-pie"></div>
+        </div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>流量转化漏斗</h3></div>
+          <div class="chart-body" id="chart-overview-funnel"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>经营洞察</h3></div>
+          <div class="insight-list" id="overviewInsights"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 漏斗诊断 ===== -->
+    <section class="page-section" id="page-funnel" style="display:none">
+      <div class="chart-row">
+        <div class="chart-card" style="flex:2">
+          <div class="card-header"><h3>真实分层漏斗</h3></div>
+          <div class="chart-body chart-body-lg" id="chart-funnel-main"></div>
+        </div>
+        <div class="chart-card" style="flex:1">
+          <div class="card-header"><h3>关键流失定位</h3></div>
+          <div class="loss-list" id="lossList"></div>
+        </div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>渠道切片热力</h3><span class="card-hint">颜色越深代表转化表现越好</span></div>
+          <div class="chart-body" id="chart-funnel-heatmap-channel"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>设备切片热力</h3><span class="card-hint">颜色越深代表表现越好，横向比较可定位异常切片</span></div>
+          <div class="chart-body" id="chart-funnel-heatmap-device"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 客户分析 ===== -->
+    <section class="page-section" id="page-customer" style="display:none">
+      <div class="kpi-grid" id="rfmKpiGrid"></div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>RFM 用户分群分布</h3></div>
+          <div class="chart-body" id="chart-rfm-pie"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>客户聚类分群</h3></div>
+          <div class="chart-body" id="chart-cluster-bar"></div>
+        </div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>复购预测 - 高潜用户</h3></div>
+          <div class="chart-body" id="chart-repurchase-top"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>客户分析洞察</h3></div>
+          <div class="insight-list" id="customerInsights"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 商品与购物车 ===== -->
+    <section class="page-section" id="page-product" style="display:none">
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>关联规则矩阵（提升度）</h3></div>
+          <div class="chart-body" id="chart-assoc-matrix"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>Top 关联规则</h3></div>
+          <div class="table-wrap" id="assocRulesTable"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>商品洞察</h3></div>
+        <div class="insight-list" id="productInsights"></div>
+      </div>
+    </section>
+
+    <!-- ===== 预测与库存 ===== -->
+    <section class="page-section" id="page-forecast" style="display:none">
+      <div class="kpi-grid" id="forecastKpiGrid"></div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>未来 7 天 GMV 预测</h3></div>
+          <div class="chart-body" id="chart-forecast-gmv"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>品类安全库存</h3></div>
+          <div class="chart-body" id="chart-forecast-category"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>预测洞察</h3></div>
+        <div class="insight-list" id="forecastInsights"></div>
+      </div>
+    </section>
+
+    <!-- ===== 营销利润 ===== -->
+    <section class="page-section" id="page-marketing" style="display:none">
+      <div class="kpi-grid" id="marketingKpiGrid"></div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>渠道 ROAS 对比</h3></div>
+          <div class="chart-body" id="chart-roas-bar"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>渠道效率明细</h3></div>
+          <div class="table-wrap" id="channelEfficiencyTable"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>预算建议</h3></div>
+        <div class="insight-list" id="marketingInsights"></div>
+      </div>
+    </section>
+
+    <!-- ===== 综合诊断 ===== -->
+    <section class="page-section" id="page-decision" style="display:none">
+      <div class="decision-summary" id="decisionSummary"></div>
+      <div class="chart-card">
+        <div class="card-header"><h3>决策建议列表</h3></div>
+        <div class="decision-list" id="decisionList"></div>
+      </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>综合洞察</h3></div>
+        <div class="insight-list" id="decisionInsights"></div>
+      </div>
+    </section>
+
+    <!-- ===== AI 分析助手 ===== -->
+    <section class="page-section" id="page-ai" style="display:none">
+      <div class="ai-container">
+        <div class="ai-chat-box" id="aiChatBox">
+          <div class="ai-message ai-system">
+            <div class="ai-avatar">&#x1F916;</div>
+            <div class="ai-bubble">
+              <p>您好！我是 EShop Intelligence AI 分析助手。我可以帮您：</p>
+              <ul>
+                <li>解读当前经营数据与指标趋势</li>
+                <li>分析转化漏斗中的流失原因</li>
+                <li>针对用户分群提出运营建议</li>
+                <li>解释数据挖掘模型的输出</li>
+              </ul>
+              <p>请选择您想了解的问题，或直接输入您的问题。</p>
+            </div>
+          </div>
+        </div>
+        <div class="ai-quick-actions" id="aiQuickActions">
+          <button class="ai-quick-btn" data-q="当前整体经营健康度如何？">当前整体经营健康度如何？</button>
+          <button class="ai-quick-btn" data-q="哪个漏斗环节流失最严重？">哪个漏斗环节流失最严重？</button>
+          <button class="ai-quick-btn" data-q="哪些用户群值得重点运营？">哪些用户群值得重点运营？</button>
+          <button class="ai-quick-btn" data-q="给出三个最重要的决策建议">给出三个最重要的决策建议</button>
+        </div>
+        <div class="ai-input-row">
+          <input type="text" class="ai-input" id="aiInput" placeholder="输入您的问题..." />
+          <button class="btn btn-primary" id="aiSendBtn">发送</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 系统配置 ===== -->
+    <section class="page-section" id="page-config" style="display:none">
+      <div class="chart-card">
+        <div class="card-header"><h3>系统信息</h3></div>
+        <div class="config-grid">
+          <div class="config-item">
+            <label>系统名称</label>
+            <span>EShop Intelligence 经营分析与数据挖掘系统</span>
+          </div>
+          <div class="config-item">
+            <label>版本</label>
+            <span>v1.0.0</span>
+          </div>
+          <div class="config-item">
+            <label>技术栈</label>
+            <span>FastAPI + ECharts + SQLite</span>
+          </div>
+          <div class="config-item">
+            <label>数据缓存 TTL</label>
+            <span>300 秒（5分钟）</span>
+          </div>
+          <div class="config-item">
+            <label>API 基础地址</label>
+            <span id="configBaseUrl">-</span>
+          </div>
+          <div class="config-item">
+            <label>数据库路径</label>
+            <span id="configDbPath">-</span>
+          </div>
+        </div>
+      </div>
+      <div class="chart-card" style="margin-top:16px">
+        <div class="card-header"><h3>模块状态</h3></div>
+        <div class="table-wrap" id="moduleStatusTable"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
 </body>
 </html>
