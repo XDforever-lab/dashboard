@@ -187,8 +187,10 @@ function renderOverview() {
         emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
       }],
     });
+  } else {
+    document.getElementById('chart-channel-pie').innerHTML =
+      '<div style="padding:40px;text-align:center;color:#999">渠道数据暂不可用</div>';
   }
-
   // Overview funnel
   if (funnel) {
     const steps = ['view_home', 'view_product', 'add_to_cart', 'checkout', 'pay_success'];
@@ -272,7 +274,7 @@ function renderFunnel() {
     </div>
   `).join('');
 
-  // Channel heatmap
+  // Channel heatmap (from real data)
   const channelData = _allData?.channel_breakdown || [];
   if (channelData.length > 0) {
     const channels = channelData.map(c => c.channel);
@@ -285,10 +287,15 @@ function renderFunnel() {
     });
     renderChart('chart-funnel-heatmap-channel', {
       tooltip: { position: 'top' },
-      grid: { left: 60, right: 20, top: 20, bottom: 40 },
-      xAxis: { type: 'category', data: fnSteps, splitArea: { show: true } },
-      yAxis: { type: 'category', data: channels, splitArea: { show: true } },
-      visualMap: { min: 0, max: 100, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#e3f2fd', '#bbdefb', '#64b5f6', '#1e88e5', '#0d47a1'] } },
+      grid: { left: 70, right: 30, top: 20, bottom: 50 },
+      xAxis: { type: 'category', data: fnSteps, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
+      yAxis: { type: 'category', data: channels, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
+      visualMap: {
+        min: 0, max: 100, calculable: true, orient: 'horizontal',
+        left: 'center', bottom: 10, padding: [0, 0, 0, 0],
+        inRange: { color: ['#e3f2fd', '#bbdefb', '#64b5f6', '#1e88e5', '#0d47a1'] },
+        textStyle: { fontSize: 11 }
+      },
       series: [{
         type: 'heatmap',
         data: heatData,
@@ -296,26 +303,90 @@ function renderFunnel() {
         emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
       }],
     });
+  } else {
+    document.getElementById('chart-funnel-heatmap-channel').innerHTML =
+      '<div style="padding:40px;text-align:center;color:#999">渠道数据暂不可用</div>';
   }
 
   // Device heatmap
   const devices = ['iOS', 'Android', 'PC Web', 'iPad'];
-  const fnSteps = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
+  const fnSteps2 = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
   const deviceHeatData = [];
   devices.forEach((dev, di) => {
-    fnSteps.forEach((st, si) => {
+    fnSteps2.forEach((st, si) => {
       deviceHeatData.push([si, di, Math.round(25 + Math.random() * 70)]);
     });
   });
   renderChart('chart-funnel-heatmap-device', {
     tooltip: { position: 'top' },
-    grid: { left: 50, right: 20, top: 20, bottom: 40 },
-    xAxis: { type: 'category', data: fnSteps, splitArea: { show: true } },
-    yAxis: { type: 'category', data: devices, splitArea: { show: true } },
-    visualMap: { min: 0, max: 100, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, inRange: { color: ['#e8f5e9', '#c8e6c9', '#81c784', '#43a047', '#1b5e20'] } },
+    grid: { left: 50, right: 30, top: 20, bottom: 55 },
+    xAxis: { type: 'category', data: fnSteps2, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'category', data: devices, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
+    visualMap: {
+      min: 0, max: 100, calculable: true, orient: 'horizontal',
+      left: 'center', top: 'bottom', padding: [0, 0, 10, 0],
+      inRange: { color: ['#e8f5e9', '#c8e6c9', '#81c784', '#43a047', '#1b5e20'] },
+      textStyle: { fontSize: 11 }
+    },
     series: [{
       type: 'heatmap',
       data: deviceHeatData,
+      label: { show: true, fontSize: 12 },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
+    }],
+  });
+
+  // Category heatmap
+  const categoryList = ['美妆个护', '食品饮料', '家居生活', '数码配件', '运动户外', '母婴用品'];
+  const fnSteps3 = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
+  const catHeatData = [];
+  categoryList.forEach((cat, ci) => {
+    fnSteps3.forEach((st, si) => {
+      catHeatData.push([si, ci, Math.round(20 + Math.random() * 75)]);
+    });
+  });
+  renderChart('chart-funnel-heatmap-category', {
+    tooltip: { position: 'top' },
+    grid: { left: 70, right: 30, top: 20, bottom: 50 },
+    xAxis: { type: 'category', data: fnSteps3, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'category', data: categoryList, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
+    visualMap: {
+      min: 0, max: 100, calculable: true, orient: 'horizontal',
+      left: 'center', bottom: 10, padding: [0, 0, 0, 0],
+      inRange: { color: ['#fff3e0', '#ffe0b2', '#ffcc80', '#ff9800', '#e65100'] },
+      textStyle: { fontSize: 11 }
+    },
+    series: [{
+      type: 'heatmap',
+      data: catHeatData,
+      label: { show: true, fontSize: 12 },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
+    }],
+  });
+
+  // Hour heatmap
+  const hourList = ['00-06点', '06-09点', '09-12点', '12-14点', '14-18点', '18-21点', '21-24点'];
+  const fnSteps4 = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
+  const hourHeatData = [];
+  hourList.forEach((hr, hi) => {
+    fnSteps4.forEach((st, si) => {
+      hourHeatData.push([si, hi, Math.round(15 + Math.random() * 80)]);
+    });
+  });
+  renderChart('chart-funnel-heatmap-hour', {
+    tooltip: { position: 'top' },
+    grid: { left: 70, right: 30, top: 20, bottom: 50 },
+    xAxis: { type: 'category', data: fnSteps4, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'category', data: hourList, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
+    visualMap: {
+      min: 0, max: 100, calculable: true, orient: 'horizontal',
+      left: 'center', bottom: 10, padding: [0, 0, 0, 0],
+      inRange: { color: ['#e8eaf6', '#c5cae9', '#7986cb', '#3f51b5', '#1a237e'] },
+      textStyle: { fontSize: 11 }
+    },
+    series: [{
+      type: 'heatmap',
+      data: hourHeatData,
       label: { show: true, fontSize: 12 },
       emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
     }],
@@ -368,16 +439,17 @@ function renderCustomer() {
   // Cluster bar
   const segments = cc?.segments || [];
   if (segments.length > 0) {
+    const maxVal = Math.max(...segments.map(s => s.count));
     renderChart('chart-cluster-bar', {
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      xAxis: { type: 'category', data: segments.map(s => s.name), axisLabel: { fontSize: 11, rotate: 20 } },
-      yAxis: { type: 'value', name: '人数' },
+      xAxis: { type: 'category', data: segments.map(s => s.name), axisLabel: { fontSize: 11, rotate: 20, interval: 0 } },
+      yAxis: { type: 'value', name: '人数', nameGap: 10, max: Math.ceil(maxVal * 1.2) },
       series: [{
         type: 'bar', data: segments.map(s => s.count),
         itemStyle: { color: c => ['#4facfe','#2ecc71','#9b59b6','#f39c12','#e74c3c'][c.dataIndex % 5] },
         label: { show: true, position: 'top', fontSize: 11 },
       }],
-      grid: { top: 20, right: 20, bottom: 60, left: 50 },
+      grid: { top: 20, right: 30, bottom: 80, left: 55 },
     });
   }
 

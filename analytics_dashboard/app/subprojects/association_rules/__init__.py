@@ -11,7 +11,7 @@ def run():
         SELECT DISTINCT order_id
         FROM fact_order_item
         ORDER BY order_id DESC
-        LIMIT 1000
+        LIMIT 20000
     """)
 
     if not order_ids_row:
@@ -67,22 +67,22 @@ def run():
 
     for (a, b), pair_count in pair_counts.items():
         support_ab = pair_count / N
-        if support_ab < 0.01:
+        if support_ab < 0.0001:
             continue
 
         support_a = item_support_counts[a] / N
         support_b = item_support_counts[b] / N
         pair_lift = support_ab / (support_a * support_b) if support_a * support_b > 0 else 0
 
-        if pair_lift < 1.2:
+        if pair_lift < 0.5:
             continue
 
         confidence_ab = pair_count / item_support_counts[a]
-        if confidence_ab >= 0.1:
+        if confidence_ab >= 0.05:
             rules.append((a, b, support_ab, confidence_ab, pair_lift))
 
         confidence_ba = pair_count / item_support_counts[b]
-        if confidence_ba >= 0.1:
+        if confidence_ba >= 0.05:
             rules.append((b, a, support_ab, confidence_ba, pair_lift))
 
     rules.sort(key=lambda r: r[4], reverse=True)
@@ -90,9 +90,9 @@ def run():
 
     result_rules = []
     for ante, cons, supp, conf, lift_val in rules:
-        if lift_val > 2:
+        if lift_val > 1.5:
             suggestion = "强关联，适合捆绑销售"
-        elif lift_val > 1.5:
+        elif lift_val > 1.0:
             suggestion = "中等关联，适合推荐位展示"
         else:
             suggestion = "弱关联，可观察"

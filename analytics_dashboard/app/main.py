@@ -111,6 +111,7 @@ def api_summary():
         "monthly_trend": bh.get("monthly_trend", []),
         "funnel": bh.get("funnel", {}),
         "funnel_rates": bh.get("funnel_rates", {}),
+        "channel_breakdown": bh.get("channel_breakdown", []),
         "rfm_summary": fe.get("summary", {}),
         "rfm_distribution": fe.get("rfm_distribution", {}),
         "repurchase_summary": rp.get("summary", {}),
