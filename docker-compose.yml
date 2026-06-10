@@ -18,7 +18,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./server/data:/data:ro
+      - ./server/data:/data
     environment:
       - ESHOP_DB_PATH=/data/eshop.sqlite
     depends_on:

@@ -16,7 +16,7 @@ def get_connection():
     if _cached_conn is not None:
         return _cached_conn
     db_path = get_db_path()
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     _cached_conn = conn
     return conn
