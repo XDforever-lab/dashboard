@@ -14,6 +14,20 @@ const API = {
   summary() { return this.fetch('/api/summary'); },
   subproject(id) { return this.fetch(`/api/subprojects/${id}`); },
   decision() { return this.fetch('/api/decision-board'); },
+  async ai(question) {
+    try {
+      const res = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      console.error('AI analyze failed:', e);
+      return null;
+    }
+  },
 };
 
 const TITLES = {
@@ -33,6 +47,7 @@ let _subData = {};
 
 // ========== Init ==========
 document.addEventListener('DOMContentLoaded', () => {
+  document.body.dataset.page = 'overview';
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', () => switchPage(el.dataset.page));
   });
@@ -49,10 +64,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') { document.getElementById('aiSendBtn').click(); }
   });
 
-  loadData(true).then(() => renderPage('overview'));
+  loadData(true).then(renderActivePage);
 });
 
 function switchPage(page) {
+  document.body.dataset.page = page;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
   document.querySelectorAll('.page-section').forEach(el => el.style.display = 'none');
@@ -64,6 +80,10 @@ function switchPage(page) {
 
 async function reloadAll() {
   await loadData(true);
+  renderActivePage();
+}
+
+function renderActivePage() {
   const page = document.querySelector('.nav-item.active')?.dataset?.page || 'overview';
   renderPage(page);
 }
@@ -79,6 +99,12 @@ async function loadData(forceReload) {
     document.getElementById('footerOrders').textContent = (ov.orders || 0).toLocaleString();
     document.getElementById('footerEvents').textContent = (ov.events || 0).toLocaleString();
     document.getElementById('footerUsers').textContent = (ov.users || 0).toLocaleString();
+    const heroOrders = document.getElementById('heroOrders');
+    const heroEvents = document.getElementById('heroEvents');
+    const heroUsers = document.getElementById('heroUsers');
+    if (heroOrders) heroOrders.textContent = fmtNum(ov.orders || 0);
+    if (heroEvents) heroEvents.textContent = fmtNum(ov.events || 0);
+    if (heroUsers) heroUsers.textContent = fmtNum(ov.users || 0);
   }
 
   // Refresh data
@@ -195,7 +221,7 @@ function renderOverview() {
   if (funnel) {
     const steps = ['view_home', 'view_product', 'add_to_cart', 'checkout', 'pay_success'];
     const names = ['首页访问', '商品页浏览', '加入购物车', '提交结算', '支付成功'];
-    const colors = ['#4facfe', '#2ecc71', '#9b59b6', '#f39c12', '#e74c3c'];
+    const colors = ['#2b6fbb', '#16866f', '#d9822b', '#dd6b5f', '#8b4f3f'];
     const values = steps.map(s => funnel[s] || 0);
     renderChart('chart-overview-funnel', {
       tooltip: { trigger: 'item', formatter: '{b}: {c}' },
@@ -203,7 +229,13 @@ function renderOverview() {
         type: 'funnel',
         left: '15%', right: '15%', top: 20, bottom: 20,
         minSize: '20%', maxSize: '100%', gap: 2,
-        label: { show: true, position: 'inside', formatter: p => `${p.name}\n${fmtNum(p.value)}` },
+        label: {
+          show: true,
+          position: 'inside',
+          color: '#fff',
+          fontWeight: 700,
+          formatter: p => `${p.name}\n${fmtNum(p.value)}`,
+        },
         data: steps.map((s, i) => ({
           name: names[i], value: values[i],
           itemStyle: { color: colors[i] },
@@ -222,11 +254,11 @@ function renderFunnel() {
   const funnel = _allData?.funnel || {};
 
   const steps = [
-    { key: 'view_home', name: '首页访问', color: '#4facfe' },
-    { key: 'view_product', name: '商品页浏览', color: '#2ecc71' },
-    { key: 'add_to_cart', name: '加入购物车', color: '#9b59b6' },
-    { key: 'checkout', name: '提交结算', color: '#f39c12' },
-    { key: 'pay_success', name: '支付成功', color: '#e74c3c' },
+    { key: 'view_home', name: '首页访问', color: '#2b6fbb' },
+    { key: 'view_product', name: '商品页浏览', color: '#16866f' },
+    { key: 'add_to_cart', name: '加入购物车', color: '#d9822b' },
+    { key: 'checkout', name: '提交结算', color: '#dd6b5f' },
+    { key: 'pay_success', name: '支付成功', color: '#8b4f3f' },
   ];
 
   const values = steps.map(s => funnel[s.key] || 0);
@@ -285,24 +317,8 @@ function renderFunnel() {
         heatData.push([si, ci, Math.round(30 + Math.random() * 65)]);
       });
     });
-    renderChart('chart-funnel-heatmap-channel', {
-      tooltip: { position: 'top' },
-      grid: { left: 70, right: 30, top: 20, bottom: 50 },
-      xAxis: { type: 'category', data: fnSteps, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
-      yAxis: { type: 'category', data: channels, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
-      visualMap: {
-        min: 0, max: 100, calculable: true, orient: 'horizontal',
-        left: 'center', bottom: 10, padding: [0, 0, 0, 0],
-        inRange: { color: ['#e3f2fd', '#bbdefb', '#64b5f6', '#1e88e5', '#0d47a1'] },
-        textStyle: { fontSize: 11 }
-      },
-      series: [{
-        type: 'heatmap',
-        data: heatData,
-        label: { show: true, fontSize: 12 },
-        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
-      }],
-    });
+    renderHeatmapChart('chart-funnel-heatmap-channel', fnSteps, channels, heatData,
+      ['#f7efe4', '#ead3b8', '#d9a46e', '#b86f42', '#6f3d2d']);
   } else {
     document.getElementById('chart-funnel-heatmap-channel').innerHTML =
       '<div style="padding:40px;text-align:center;color:#999">渠道数据暂不可用</div>';
@@ -317,24 +333,8 @@ function renderFunnel() {
       deviceHeatData.push([si, di, Math.round(25 + Math.random() * 70)]);
     });
   });
-  renderChart('chart-funnel-heatmap-device', {
-    tooltip: { position: 'top' },
-    grid: { left: 50, right: 30, top: 20, bottom: 55 },
-    xAxis: { type: 'category', data: fnSteps2, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
-    yAxis: { type: 'category', data: devices, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
-    visualMap: {
-      min: 0, max: 100, calculable: true, orient: 'horizontal',
-      left: 'center', top: 'bottom', padding: [0, 0, 10, 0],
-      inRange: { color: ['#e8f5e9', '#c8e6c9', '#81c784', '#43a047', '#1b5e20'] },
-      textStyle: { fontSize: 11 }
-    },
-    series: [{
-      type: 'heatmap',
-      data: deviceHeatData,
-      label: { show: true, fontSize: 12 },
-      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
-    }],
-  });
+  renderHeatmapChart('chart-funnel-heatmap-device', fnSteps2, devices, deviceHeatData,
+    ['#edf4ec', '#cfe3d4', '#91c1a1', '#4f9276', '#175d50']);
 
   // Category heatmap
   const categoryList = ['美妆个护', '食品饮料', '家居生活', '数码配件', '运动户外', '母婴用品'];
@@ -345,24 +345,8 @@ function renderFunnel() {
       catHeatData.push([si, ci, Math.round(20 + Math.random() * 75)]);
     });
   });
-  renderChart('chart-funnel-heatmap-category', {
-    tooltip: { position: 'top' },
-    grid: { left: 70, right: 30, top: 20, bottom: 50 },
-    xAxis: { type: 'category', data: fnSteps3, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
-    yAxis: { type: 'category', data: categoryList, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
-    visualMap: {
-      min: 0, max: 100, calculable: true, orient: 'horizontal',
-      left: 'center', bottom: 10, padding: [0, 0, 0, 0],
-      inRange: { color: ['#fff3e0', '#ffe0b2', '#ffcc80', '#ff9800', '#e65100'] },
-      textStyle: { fontSize: 11 }
-    },
-    series: [{
-      type: 'heatmap',
-      data: catHeatData,
-      label: { show: true, fontSize: 12 },
-      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
-    }],
-  });
+  renderHeatmapChart('chart-funnel-heatmap-category', fnSteps3, categoryList, catHeatData,
+    ['#fff0ea', '#f5c8be', '#e99584', '#dd6b5f', '#9f453e']);
 
   // Hour heatmap
   const hourList = ['00-06点', '06-09点', '09-12点', '12-14点', '14-18点', '18-21点', '21-24点'];
@@ -373,24 +357,67 @@ function renderFunnel() {
       hourHeatData.push([si, hi, Math.round(15 + Math.random() * 80)]);
     });
   });
-  renderChart('chart-funnel-heatmap-hour', {
-    tooltip: { position: 'top' },
-    grid: { left: 70, right: 30, top: 20, bottom: 50 },
-    xAxis: { type: 'category', data: fnSteps4, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
-    yAxis: { type: 'category', data: hourList, splitArea: { show: true }, axisLabel: { fontSize: 11 } },
+  renderHeatmapChart('chart-funnel-heatmap-hour', fnSteps4, hourList, hourHeatData,
+    ['#eef2f0', '#c9d9d6', '#86aaa8', '#3f7f88', '#1f4f59']);
+}
+
+function renderHeatmapChart(id, xLabels, yLabels, data, colors) {
+  renderChart(id, {
+    tooltip: {
+      position: 'top',
+      confine: true,
+      formatter: p => `${yLabels[p.value[1]]}<br/>${xLabels[p.value[0]]}: <strong>${p.value[2]}</strong>`,
+    },
+    grid: { left: 46, right: 70, top: 26, bottom: 82, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: xLabels,
+      splitArea: { show: true },
+      axisLabel: { fontSize: 11, interval: 0, margin: 12, color: '#667085' },
+      axisTick: { alignWithLabel: true },
+    },
+    yAxis: {
+      type: 'category',
+      data: yLabels,
+      splitArea: { show: true },
+      axisLabel: { fontSize: 11, color: '#667085' },
+    },
     visualMap: {
-      min: 0, max: 100, calculable: true, orient: 'horizontal',
-      left: 'center', bottom: 10, padding: [0, 0, 0, 0],
-      inRange: { color: ['#e8eaf6', '#c5cae9', '#7986cb', '#3f51b5', '#1a237e'] },
-      textStyle: { fontSize: 11 }
+      min: 0,
+      max: 100,
+      show: false,
+      inRange: { color: colors },
     },
     series: [{
       type: 'heatmap',
-      data: hourHeatData,
-      label: { show: true, fontSize: 12 },
-      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
+      data,
+      label: { show: true, fontSize: 12, color: '#3f342d', fontWeight: 600 },
+      emphasis: {
+        itemStyle: { borderColor: '#fff', borderWidth: 2, shadowBlur: 8, shadowColor: 'rgba(16,24,40,0.18)' },
+      },
     }],
   });
+  renderHeatmapSliderLegend(id, colors);
+}
+
+function renderHeatmapSliderLegend(id, colors) {
+  const dom = document.getElementById(id);
+  if (!dom) return;
+  dom.querySelector('.heatmap-slider-legend')?.remove();
+
+  const legend = document.createElement('div');
+  legend.className = 'heatmap-slider-legend';
+  legend.style.setProperty('--heatmap-start', colors[0]);
+  legend.style.setProperty('--heatmap-end', colors[colors.length - 1]);
+  legend.innerHTML = `
+    <span class="heatmap-scale heatmap-scale-min">0</span>
+    <div class="heatmap-slider-track" style="background: linear-gradient(90deg, ${colors.join(', ')})">
+      <span class="heatmap-slider-handle heatmap-slider-handle-min"></span>
+      <span class="heatmap-slider-handle heatmap-slider-handle-max"></span>
+    </div>
+    <span class="heatmap-scale heatmap-scale-max">100</span>
+  `;
+  dom.appendChild(legend);
 }
 
 // ========== Customer ==========
@@ -439,18 +466,7 @@ function renderCustomer() {
   // Cluster bar
   const segments = cc?.segments || [];
   if (segments.length > 0) {
-    const maxVal = Math.max(...segments.map(s => s.count));
-    renderChart('chart-cluster-bar', {
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      xAxis: { type: 'category', data: segments.map(s => s.name), axisLabel: { fontSize: 11, rotate: 20, interval: 0 } },
-      yAxis: { type: 'value', name: '人数', nameGap: 10, max: Math.ceil(maxVal * 1.2) },
-      series: [{
-        type: 'bar', data: segments.map(s => s.count),
-        itemStyle: { color: c => ['#4facfe','#2ecc71','#9b59b6','#f39c12','#e74c3c'][c.dataIndex % 5] },
-        label: { show: true, position: 'top', fontSize: 11 },
-      }],
-      grid: { top: 20, right: 30, bottom: 80, left: 55 },
-    });
+    renderSegmentBars('chart-cluster-bar', segments);
   }
 
   // Repurchase top users
@@ -484,26 +500,7 @@ function renderProduct() {
 
   if (rules.length > 0) {
     const topRules = rules.slice(0, 15);
-    renderChart('chart-assoc-matrix', {
-      tooltip: {
-        trigger: 'item',
-        formatter: p => `${p.name}<br/>支持度: ${p.value[0].toFixed(4)}<br/>置信度: ${p.value[1].toFixed(4)}<br/>提升度: ${p.value[2]}`,
-      },
-      xAxis: { type: 'value', name: '支持度' },
-      yAxis: { type: 'value', name: '置信度' },
-      series: [{
-        type: 'scatter',
-        data: topRules.map(r => ({
-          name: `${r.antecedent} → ${r.consequent}`,
-          value: [r.support, r.confidence, r.lift],
-        })),
-        symbolSize: d => Math.max(8, d[2] * 12),
-        itemStyle: { color: c => c.data[2] > 2 ? '#e74c3c' : c.data[2] > 1.5 ? '#f39c12' : '#4facfe' },
-        label: { show: true, formatter: p => p.name.length > 16 ? p.name.substring(0, 14) + '…' : p.name, fontSize: 9, position: 'right' },
-        emphasis: { label: { fontSize: 12 } },
-      }],
-      grid: { top: 20, right: 30, bottom: 40, left: 60 },
-    });
+    renderAssociationMatrix('chart-assoc-matrix', topRules);
   }
 
   document.getElementById('assocRulesTable').innerHTML = rules.length > 0 ? `
@@ -568,17 +565,7 @@ function renderForecast() {
   }
 
   if (cats.length > 0) {
-    renderChart('chart-forecast-category', {
-      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-      xAxis: { type: 'category', data: cats.map(c => c.category), axisLabel: { fontSize: 11 } },
-      yAxis: { type: 'value', name: '金额' },
-      series: [
-        { name: '日均GMV', type: 'bar', data: cats.map(c => c.daily_avg_gmv), itemStyle: { color: '#4facfe' } },
-        { name: '安全库存', type: 'bar', data: cats.map(c => c.safety_stock), itemStyle: { color: '#f39c12' } },
-      ],
-      legend: { data: ['日均GMV', '安全库存'], bottom: 0 },
-      grid: { top: 20, right: 20, bottom: 40, left: 60 },
-    });
+    renderInventoryBars('chart-forecast-category', cats);
   }
 
   renderInsights('forecastInsights', sf?.insights || []);
@@ -609,10 +596,11 @@ function renderMarketing() {
   `;
 
   if (channels.length > 0) {
+    const roasMax = Math.max(...channels.map(c => c.roas || 0), 2);
     renderChart('chart-roas-bar', {
       tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
       xAxis: { type: 'category', data: channels.map(c => c.channel) },
-      yAxis: { type: 'value', name: 'ROAS' },
+      yAxis: { type: 'value', name: 'ROAS', min: 0, max: Math.ceil(roasMax * 1.12) },
       series: [{
         type: 'bar',
         data: channels.map(c => ({
@@ -620,9 +608,24 @@ function renderMarketing() {
           itemStyle: { color: c.roas > 2 ? '#2ecc71' : c.roas > 1 ? '#f39c12' : '#e74c3c' },
         })),
         label: { show: true, position: 'top', fontSize: 11 },
-        markLine: { silent: true, data: [{ yAxis: 2, label: { formatter: '健康线2.0' } }], lineStyle: { color: '#e74c3c', type: 'dashed' } },
+        markLine: {
+          silent: true,
+          symbol: ['circle', 'none'],
+          data: [{
+            yAxis: 2,
+            label: {
+              formatter: '健康线 2.0',
+              position: 'insideEndTop',
+              color: '#d92d20',
+              backgroundColor: '#fff',
+              padding: [2, 6],
+              borderRadius: 4,
+            },
+          }],
+          lineStyle: { color: '#f04438', type: 'dashed', width: 1.5 },
+        },
       }],
-      grid: { top: 20, right: 20, bottom: 30, left: 50 },
+      grid: { top: 34, right: 86, bottom: 48, left: 58, containLabel: true },
     });
 
     document.getElementById('channelEfficiencyTable').innerHTML = `
@@ -732,28 +735,42 @@ function renderConfig() {
 }
 
 // ========== AI Assistant ==========
-function askAI(question) {
+async function askAI(question) {
   const box = document.getElementById('aiChatBox');
+  appendAIMessage('user', escapeHtml(question));
+
+  const loadingId = `ai-loading-${Date.now()}`;
   box.innerHTML += `
-    <div class="ai-message ai-user">
-      <div class="ai-avatar">\uD83D\uDC64</div>
-      <div class="ai-bubble">${question}</div>
+    <div class="ai-message ai-system" id="${loadingId}">
+      <div class="ai-avatar">\uD83E\uDD16</div>
+      <div class="ai-bubble"><span class="ai-thinking">正在结合 dashboard 指标分析...</span></div>
     </div>
   `;
-
-  let answer = generateAIAnswer(question);
-
-  setTimeout(() => {
-    box.innerHTML += `
-      <div class="ai-message ai-system">
-        <div class="ai-avatar">\uD83E\uDD16</div>
-        <div class="ai-bubble">${answer}</div>
-      </div>
-    `;
-    box.scrollTop = box.scrollHeight;
-  }, 600);
-
   box.scrollTop = box.scrollHeight;
+
+  const result = await API.ai(question);
+  const loading = document.getElementById(loadingId);
+  const answer = result?.answer_html || generateAIAnswer(question);
+  const badge = result?.source === 'external'
+    ? `<div class="ai-source">模型接口：${escapeHtml(result.model || 'external')}</div>`
+    : `<div class="ai-source">本地分析接口：${escapeHtml(result?.model || 'dashboard-local-analyst')}</div>`;
+
+  if (loading) {
+    loading.querySelector('.ai-bubble').innerHTML = `${answer}${badge}`;
+  } else {
+    appendAIMessage('system', `${answer}${badge}`);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function appendAIMessage(role, html) {
+  const box = document.getElementById('aiChatBox');
+  box.innerHTML += `
+    <div class="ai-message ai-${role}">
+      <div class="ai-avatar">${role === 'user' ? '\uD83D\uDC64' : '\uD83E\uDD16'}</div>
+      <div class="ai-bubble">${html}</div>
+    </div>
+  `;
 }
 
 function generateAIAnswer(q) {
@@ -823,16 +840,257 @@ function generateAIAnswer(q) {
 }
 
 // ========== Helpers ==========
+function prepareCustomChart(id, className) {
+  const dom = document.getElementById(id);
+  if (!dom) return null;
+  const instance = echarts.getInstanceByDom(dom);
+  if (instance) instance.dispose();
+  dom.innerHTML = '';
+  dom.classList.add('custom-viz');
+  if (className) dom.classList.add(className);
+  return dom;
+}
+
+function niceMax(value) {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(value)));
+  const normalized = value / pow;
+  const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return nice * pow;
+}
+
+function svgTextLines(text, x, y, maxChars = 6, lineHeight = 15, attrs = '') {
+  const safe = escapeHtml(text);
+  if (safe.length <= maxChars) return `<text x="${x}" y="${y}" ${attrs}>${safe}</text>`;
+  const lines = [];
+  for (let i = 0; i < safe.length; i += maxChars) lines.push(safe.slice(i, i + maxChars));
+  return `<text x="${x}" y="${y}" ${attrs}>${lines.map((line, i) =>
+    `<tspan x="${x}" dy="${i === 0 ? 0 : lineHeight}">${line}</tspan>`).join('')}</text>`;
+}
+
+function renderSegmentBars(id, segments) {
+  const dom = prepareCustomChart(id, 'cluster-chart');
+  if (!dom) return;
+  const data = segments.map((s, i) => ({
+    label: s.name,
+    value: Number(s.count || 0),
+    color: ['#dd6b5f', '#16866f', '#8162a8', '#d9822b', '#268a9a'][i % 5],
+  }));
+  dom.innerHTML = renderSimpleBarSvg({
+    data,
+    yTitle: '人数',
+    valueFormatter: fmtNum,
+    height: 360,
+    bottom: 78,
+    top: 44,
+    showLegend: false,
+  });
+}
+
+function renderInventoryBars(id, cats) {
+  const dom = prepareCustomChart(id, 'inventory-chart');
+  if (!dom) return;
+  const series = [
+    { name: '日均 GMV', color: '#2b6fbb', values: cats.map(c => Number(c.daily_avg_gmv || 0)) },
+    { name: '安全库存', color: '#d9822b', values: cats.map(c => Number(c.safety_stock || 0)) },
+  ];
+  dom.innerHTML = renderGroupedBarSvg({
+    labels: cats.map(c => c.category),
+    series,
+    yTitle: '金额',
+    valueFormatter: fmtShort,
+  });
+}
+
+function renderSimpleBarSvg({ data, yTitle, valueFormatter, height = 360, top = 42, bottom = 72 }) {
+  const width = 520;
+  const margin = { top, right: 34, bottom, left: 76 };
+  const plotW = width - margin.left - margin.right;
+  const plotH = height - margin.top - margin.bottom;
+  const maxVal = niceMax(Math.max(...data.map(d => d.value), 1) * 1.16);
+  const ticks = Array.from({ length: 5 }, (_, i) => maxVal / 4 * i);
+  const band = plotW / data.length;
+  const barW = Math.min(110, band * 0.58);
+  const grid = ticks.map(t => {
+    const y = margin.top + plotH - (t / maxVal) * plotH;
+    return `
+      <line class="svg-grid" x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}"></line>
+      <text class="svg-tick" x="${margin.left - 12}" y="${y + 4}" text-anchor="end">${valueFormatter(t)}</text>
+    `;
+  }).join('');
+  const bars = data.map((d, i) => {
+    const x = margin.left + i * band + (band - barW) / 2;
+    const h = Math.max(2, (d.value / maxVal) * plotH);
+    const y = margin.top + plotH - h;
+    const cx = margin.left + i * band + band / 2;
+    return `
+      <rect class="svg-bar" x="${x}" y="${y}" width="${barW}" height="${h}" rx="7" fill="${d.color}"></rect>
+      <text class="svg-value" x="${cx}" y="${y - 8}" text-anchor="middle">${valueFormatter(d.value)}</text>
+      ${svgTextLines(d.label, cx, margin.top + plotH + 25, 7, 15, 'class="svg-xlabel" text-anchor="middle"')}
+    `;
+  }).join('');
+  return `
+    <svg class="metric-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">
+      <text class="svg-axis-title" x="${margin.left}" y="24">${escapeHtml(yTitle)}</text>
+      ${grid}
+      <line class="svg-axis" x1="${margin.left}" y1="${margin.top + plotH}" x2="${width - margin.right}" y2="${margin.top + plotH}"></line>
+      <line class="svg-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}"></line>
+      ${bars}
+    </svg>
+  `;
+}
+
+function renderGroupedBarSvg({ labels, series, yTitle, valueFormatter }) {
+  const width = 520;
+  const height = 360;
+  const margin = { top: 48, right: 34, bottom: 78, left: 86 };
+  const plotW = width - margin.left - margin.right;
+  const plotH = height - margin.top - margin.bottom;
+  const maxVal = niceMax(Math.max(...series.flatMap(s => s.values), 1) * 1.16);
+  const ticks = Array.from({ length: 5 }, (_, i) => maxVal / 4 * i);
+  const band = plotW / labels.length;
+  const groupW = Math.min(96, band * 0.62);
+  const barW = groupW / series.length - 5;
+  const grid = ticks.map(t => {
+    const y = margin.top + plotH - (t / maxVal) * plotH;
+    return `
+      <line class="svg-grid" x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}"></line>
+      <text class="svg-tick" x="${margin.left - 12}" y="${y + 4}" text-anchor="end">${valueFormatter(t)}</text>
+    `;
+  }).join('');
+  const groups = labels.map((label, i) => {
+    const groupX = margin.left + i * band + (band - groupW) / 2;
+    const cx = margin.left + i * band + band / 2;
+    const bars = series.map((s, si) => {
+      const value = s.values[i] || 0;
+      const h = Math.max(2, (value / maxVal) * plotH);
+      const x = groupX + si * (barW + 10);
+      const y = margin.top + plotH - h;
+      return `
+        <rect class="svg-bar" x="${x}" y="${y}" width="${barW}" height="${h}" rx="6" fill="${s.color}">
+          <title>${escapeHtml(label)} - ${escapeHtml(s.name)}: ${valueFormatter(value)}</title>
+        </rect>
+      `;
+    }).join('');
+    return `${bars}${svgTextLines(label, cx, margin.top + plotH + 25, 5, 15, 'class="svg-xlabel" text-anchor="middle"')}`;
+  }).join('');
+  const legend = series.map((s, i) => `
+    <g transform="translate(${margin.left + i * 120}, ${height - 20})">
+      <rect width="16" height="10" rx="3" fill="${s.color}"></rect>
+      <text class="svg-legend-text" x="24" y="10">${escapeHtml(s.name)}</text>
+    </g>
+  `).join('');
+  return `
+    <svg class="metric-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">
+      <text class="svg-axis-title" x="${margin.left}" y="24">${escapeHtml(yTitle)}</text>
+      ${grid}
+      <line class="svg-axis" x1="${margin.left}" y1="${margin.top + plotH}" x2="${width - margin.right}" y2="${margin.top + plotH}"></line>
+      <line class="svg-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}"></line>
+      ${groups}
+      ${legend}
+    </svg>
+  `;
+}
+
+function renderAssociationMatrix(id, rules) {
+  const dom = prepareCustomChart(id, 'assoc-matrix');
+  if (!dom) return;
+  const width = 520;
+  const height = 390;
+  const margin = { top: 58, right: 54, bottom: 78, left: 92 };
+  const plotW = width - margin.left - margin.right;
+  const plotH = height - margin.top - margin.bottom;
+  const supportValues = rules.map(r => Number(r.support || 0));
+  const confidenceValues = rules.map(r => Number(r.confidence || 0));
+  const liftValues = rules.map(r => Number(r.lift || 0));
+  const supportMin = Math.min(...supportValues);
+  const supportMax = Math.max(...supportValues);
+  const supportPad = Math.max((supportMax - supportMin) * 0.24, supportMax * 0.06, 0.000004);
+  const xMin = Math.max(0, supportMin - supportPad);
+  const xMax = supportMax + supportPad;
+  const yMax = Math.max(0.16, niceMax(Math.max(...confidenceValues, 0.01) * 1.12));
+  const liftMax = Math.max(...liftValues, 1);
+  const xTicks = Array.from({ length: 5 }, (_, i) => xMin + (xMax - xMin) / 4 * i);
+  const yTicks = Array.from({ length: 5 }, (_, i) => yMax / 4 * i);
+  const xScale = v => margin.left + ((v - xMin) / (xMax - xMin || 1)) * plotW;
+  const yScale = v => margin.top + plotH - (v / yMax) * plotH;
+  const gridY = yTicks.map(t => {
+    const y = yScale(t);
+    return `
+      <line class="svg-grid" x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}"></line>
+      <text class="svg-tick" x="${margin.left - 12}" y="${y + 4}" text-anchor="end">${t.toFixed(2)}</text>
+    `;
+  }).join('');
+  const gridX = xTicks.map(t => {
+    const x = xScale(t);
+    return `
+      <line class="svg-grid" x1="${x}" y1="${margin.top}" x2="${x}" y2="${margin.top + plotH}"></line>
+      <text class="svg-tick" x="${x}" y="${margin.top + plotH + 24}" text-anchor="middle">${t.toFixed(5)}</text>
+    `;
+  }).join('');
+  const points = rules.map((r, i) => {
+    const x = xScale(Number(r.support || 0));
+    const y = yScale(Number(r.confidence || 0));
+    const lift = Number(r.lift || 0);
+    const radius = 8 + Math.sqrt(lift / liftMax) * 14;
+    const color = lift > 2 ? '#2b6fbb' : lift > 1.5 ? '#d9822b' : '#16866f';
+    return `
+      <g class="assoc-point" transform="translate(${x}, ${y})">
+        <circle r="${radius}" fill="${color}"></circle>
+        <text class="assoc-point-label" y="4" text-anchor="middle">${i + 1}</text>
+        <title>${escapeHtml(r.antecedent)} → ${escapeHtml(r.consequent)}
+支持度: ${Number(r.support || 0).toFixed(5)}
+置信度: ${Number(r.confidence || 0).toFixed(4)}
+提升度: ${lift.toFixed(2)}</title>
+      </g>
+    `;
+  }).join('');
+  dom.innerHTML = `
+    <svg class="metric-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img">
+      <text class="svg-axis-title" x="${margin.left}" y="28">置信度</text>
+      <text class="svg-axis-title" x="${width - 72}" y="${height - 20}">支持度</text>
+      ${gridY}
+      ${gridX}
+      <line class="svg-axis" x1="${margin.left}" y1="${margin.top + plotH}" x2="${width - margin.right}" y2="${margin.top + plotH}"></line>
+      <line class="svg-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotH}"></line>
+      ${points}
+      <g transform="translate(${margin.left}, ${height - 22})">
+        <circle r="6" cx="0" cy="-4" fill="#2b6fbb"></circle>
+        <text class="svg-legend-text" x="14" y="0">圆点大小代表提升度，数字对应右侧 Top 规则顺序</text>
+      </g>
+    </svg>
+  `;
+}
+
 function renderChart(id, option) {
   const dom = document.getElementById(id);
   if (!dom) return;
+  dom.classList.remove('custom-viz', 'assoc-matrix', 'inventory-chart', 'cluster-chart');
   let instance = echarts.getInstanceByDom(dom);
-  if (!instance) instance = echarts.init(dom);
-  instance.setOption(option, true);
+  if (!instance) {
+    dom.innerHTML = '';
+    instance = echarts.init(dom);
+  }
+  const themedOption = {
+    color: ['#dd6b5f', '#16866f', '#d9822b', '#2b6fbb', '#8162a8', '#268a9a'],
+    textStyle: { color: '#5f554c', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif' },
+    ...option,
+  };
+  instance.setOption(themedOption, true);
   if (!dom._resizeBound) {
     dom._resizeBound = true;
     new ResizeObserver(() => instance?.resize()).observe(dom);
   }
+}
+
+function renderAssocAxisLabels() {
+  const dom = document.getElementById('chart-assoc-matrix');
+  if (!dom) return;
+  dom.querySelectorAll('.assoc-axis-label').forEach(el => el.remove());
+  dom.insertAdjacentHTML('beforeend', `
+    <span class="assoc-axis-label assoc-axis-label-y">置信度</span>
+    <span class="assoc-axis-label assoc-axis-label-x">支持度</span>
+  `);
 }
 
 function renderInsights(id, items) {
@@ -862,4 +1120,13 @@ function fmtShort(v) {
   if (Math.abs(v) >= 1e8) return `${(v / 1e8).toFixed(1)}亿`;
   if (Math.abs(v) >= 1e4) return `${(v / 1e4).toFixed(1)}万`;
   return v.toFixed(0);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

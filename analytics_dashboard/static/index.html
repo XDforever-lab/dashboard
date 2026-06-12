@@ -17,39 +17,39 @@
 
     <nav class="sidebar-nav" id="sidebarNav">
       <div class="nav-item active" data-page="overview">
-        <span class="nav-icon">&#x1F4CA;</span>
+        <span class="nav-icon">▥</span>
         <span>经营总览</span>
       </div>
       <div class="nav-item" data-page="funnel">
-        <span class="nav-icon">&#x1F50D;</span>
+        <span class="nav-icon">⌕</span>
         <span>漏斗诊断</span>
       </div>
       <div class="nav-item" data-page="customer">
-        <span class="nav-icon">&#x1F465;</span>
+        <span class="nav-icon">◌</span>
         <span>客户分析</span>
       </div>
       <div class="nav-item" data-page="product">
-        <span class="nav-icon">&#x1F6CD;</span>
+        <span class="nav-icon">□</span>
         <span>商品与购物车</span>
       </div>
       <div class="nav-item" data-page="forecast">
-        <span class="nav-icon">&#x1F4C8;</span>
+        <span class="nav-icon">↗</span>
         <span>预测与库存</span>
       </div>
       <div class="nav-item" data-page="marketing">
-        <span class="nav-icon">&#x1F4E3;</span>
+        <span class="nav-icon">◎</span>
         <span>营销利润</span>
       </div>
       <div class="nav-item" data-page="decision">
-        <span class="nav-icon">&#x1F3AF;</span>
+        <span class="nav-icon">◇</span>
         <span>综合诊断</span>
       </div>
       <div class="nav-item" data-page="ai">
-        <span class="nav-icon">&#x1F916;</span>
+        <span class="nav-icon">AI</span>
         <span>AI 分析助手</span>
       </div>
       <div class="nav-item" data-page="config">
-        <span class="nav-icon">&#x2699;</span>
+        <span class="nav-icon">⚙</span>
         <span>系统配置</span>
       </div>
     </nav>
@@ -68,12 +68,28 @@
 
     <!-- 页面头部 -->
     <header class="page-header" id="pageHeader">
-      <h1 id="pageTitle">经营总览</h1>
+      <div class="page-title-block">
+        <span class="page-kicker">Commerce Operations</span>
+        <h1 id="pageTitle">经营总览</h1>
+      </div>
       <div class="header-actions">
         <span class="update-time" id="updateTime">数据加载中...</span>
         <button class="btn btn-sm btn-outline" id="btnRefresh" title="刷新数据">&#x21BB; 刷新</button>
       </div>
     </header>
+
+    <section class="commerce-hero" id="commerceHero">
+      <div class="commerce-hero-copy">
+        <span class="hero-eyebrow">Retail Command Center</span>
+        <h2>从流量、商品、库存到利润的一体化经营视图</h2>
+        <p>围绕电商交易链路重组指标层级，突出转化效率、商品组合与预算回报。</p>
+      </div>
+      <div class="commerce-hero-stats">
+        <div><span>Orders</span><strong id="heroOrders">-</strong></div>
+        <div><span>Events</span><strong id="heroEvents">-</strong></div>
+        <div><span>Users</span><strong id="heroUsers">-</strong></div>
+      </div>
+    </section>
 
     <!-- ===== 经营总览 ===== -->
     <section class="page-section" id="page-overview">
@@ -161,12 +177,12 @@
 
     <!-- ===== 商品与购物车 ===== -->
     <section class="page-section" id="page-product" style="display:none">
-      <div class="chart-row">
-        <div class="chart-card">
+      <div class="chart-row product-row">
+        <div class="chart-card product-matrix-card">
           <div class="card-header"><h3>关联规则矩阵（提升度）</h3></div>
           <div class="chart-body" id="chart-assoc-matrix"></div>
         </div>
-        <div class="chart-card">
+        <div class="chart-card product-rules-card">
           <div class="card-header"><h3>Top 关联规则</h3></div>
           <div class="table-wrap" id="assocRulesTable"></div>
         </div>
