@@ -17,22 +17,42 @@
 ## 🏗️ 架构概览
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        用户 / 学生                                │
-└──────┬───────────────────────────────────────┬───────────────────┘
-       │                                       │
-       ▼                                       ▼
-┌──────────────┐                    ┌──────────────────────┐
-│   client/    │  Vite Dev Server   │ analytics_dashboard/ │
-│  React 商城   │  :39174            │ FastAPI 分析仪表盘    │
-│  (购物/下单)  │                    │  :9002               │
-└──────┬───────┘                    └──────────┬───────────┘
-       │  /api 代理                            │ 只读 SQLite
-       ▼                                       ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                      server/  Express API  :38173                 │
-│                    (读写)  eshop.sqlite 数据库                     │
-└──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           用户 / 学生                                         │
+└──────┬────────────────────────────────────────────────────┬──────────────────┘
+       │ 购物端                                              │ 分析端
+       ▼                                                    ▼
+┌─────────────────────┐                  ┌─────────────────────────────────────┐
+│   client/           │  Vite :39174     │   analytics_dashboard/              │
+│   React 电商商城     │  /api 代理       │   FastAPI 分析仪表盘 :9002           │
+│                     │                  │                                     │
+│  • 商品浏览          │                  │   左侧导航（10 个页面）：             │
+│  • 类目筛选          │                  │   ▥ 经营总览    ☷ 数据概览           │
+│  • 搜索             │                  │   ⌕ 漏斗诊断    ◌ 客户分析           │
+│  • 购物车           │                  │   □ 商品与购物车 ↗ 预测与库存        │
+│  • 登录/注册         │                  │   ◎ 营销利润    ◇ 综合诊断           │
+│  • 优惠券           │                  │   ↯ 履约售后    AI AI 分析助手       │
+│  • 模拟下单          │                  │   ⚙ 系统配置                         │
+│  • 订单历史          │                  │                                     │
+└──────┬──────────────┘                  └──────────┬──────────────────────────┘
+       │                                            │ 只读查询
+       ▼                                            ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        server/  Express API  :38173                           │
+│                      (读写)  SQLite  eshop.sqlite                              │
+│                                                                              │
+│  16 张业务表：users / categories / spu / sku / campaigns / coupons           │
+│  orders / order_items / carts / cart_items / payments / refunds              │
+│  shipments / page_events / inventory_movements / product_reviews             │
+│  ads_spend / user_coupons / admin_action_logs                                │
+│                                                                              │
+│  分析视图：dim_product / dim_user / dim_campaign / dim_date                  │
+│            fact_order / fact_traffic / daily_business_summary                │
+│                                                                              │
+│  9 个子项目：business_health / feature_engineering / repurchase_prediction   │
+│             customer_clustering / association_rules / sales_forecast         │
+│             marketing_attribution / fulfillment_analysis / decision_board     │
+└──────────────────────────────────────────────────────────────────────────────┘──────────────┘
 ```
 
 ---
