@@ -101,6 +101,9 @@ def run():
             "antecedent": sku_names.get(ante, f"SKU_{ante}"),
             "consequent": sku_names.get(cons, f"SKU_{cons}"),
             "support": round(supp, 4),
+            "support_pct": round(supp * 100, 2),
+            "pair_count": pair_count,
+            "total_transactions": N,
             "confidence": round(conf, 4),
             "lift": round(lift_val, 2),
             "business_suggestion": suggestion

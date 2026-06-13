@@ -16,7 +16,7 @@ services:
       context: .
       dockerfile: analytics_dashboard/Dockerfile
     ports:
-      - "8000:8000"
+      - "9002:9002"
     volumes:
       - ./server/data:/data
     environment:

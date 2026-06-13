@@ -5,7 +5,7 @@ const commands = [
   {
     name: "dashboard",
     command: "python",
-    args: ["-m", "uvicorn", "app.main:app", "--app-dir", "analytics_dashboard", "--host", "127.0.0.1", "--port", "8000", "--reload"]
+    args: ["-m", "uvicorn", "app.main:app", "--app-dir", "analytics_dashboard", "--host", "127.0.0.1", "--port", "9002", "--reload"]
   }
 ];
 

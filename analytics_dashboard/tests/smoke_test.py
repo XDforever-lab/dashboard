@@ -9,7 +9,7 @@ import time
 import os
 import subprocess
 
-BASE_URL = os.environ.get("TEST_BASE_URL", "http://127.0.0.1:8000")
+BASE_URL = os.environ.get("TEST_BASE_URL", "http://127.0.0.1:9002")
 MAX_RETRIES = 30
 RETRY_DELAY = 2
 
@@ -68,7 +68,7 @@ def start_server():
         "app.main:app",
         "--app-dir", "analytics_dashboard",
         "--host", "127.0.0.1",
-        "--port", "8000"
+        "--port", "9002"
     ]
     print(f"Starting server: {' '.join(cmd)}")
     proc = subprocess.Popen(

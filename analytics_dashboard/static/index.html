@@ -8,6 +8,17 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
+  <!-- ========== 加载提示遮罩 ========== -->
+  <div class="loading-overlay" id="loadingOverlay" style="display:flex">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">正在加载数据，请稍候...</div>
+    <div class="loading-sub" id="loadingSub">正在连接...</div>
+    <div class="loading-bar-wrap">
+      <div class="loading-bar" id="loadingBar"></div>
+    </div>
+    <div class="loading-note">预计耗时 3-5 分钟，请耐心等待</div>
+  </div>
+
   <!-- ========== 左侧导航 ========== -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
@@ -19,6 +30,10 @@
       <div class="nav-item active" data-page="overview">
         <span class="nav-icon">▥</span>
         <span>经营总览</span>
+      </div>
+      <div class="nav-item" data-page="etl">
+        <span class="nav-icon">☷</span>
+        <span>数据概览</span>
       </div>
       <div class="nav-item" data-page="funnel">
         <span class="nav-icon">⌕</span>
@@ -43,6 +58,10 @@
       <div class="nav-item" data-page="decision">
         <span class="nav-icon">◇</span>
         <span>综合诊断</span>
+      </div>
+      <div class="nav-item" data-page="fulfillment">
+        <span class="nav-icon">↯</span>
+        <span>履约售后</span>
       </div>
       <div class="nav-item" data-page="ai">
         <span class="nav-icon">AI</span>
@@ -93,6 +112,17 @@
 
     <!-- ===== 经营总览 ===== -->
     <section class="page-section" id="page-overview">
+      <div class="filter-bar" id="overviewFilterBar" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:12px 16px;border-radius:10px;background:var(--panel);border:1px solid var(--panel-border)">
+        <label style="font-size:13px;color:var(--muted);white-space:nowrap">渠道筛选</label>
+        <select id="channelFilter" style="padding:6px 10px;border:1px solid #e0dbd4;border-radius:6px;font-size:13px;color:var(--text);background:var(--panel);cursor:pointer" onchange="applyOverviewFilter()">
+          <option value="">全部渠道</option>
+        </select>
+        <label style="font-size:13px;color:var(--muted);white-space:nowrap;margin-left:8px">时间范围</label>
+        <select id="monthFilter" style="padding:6px 10px;border:1px solid #e0dbd4;border-radius:6px;font-size:13px;color:var(--text);background:var(--panel);cursor:pointer" onchange="applyOverviewFilter()">
+          <option value="">全部月份</option>
+        </select>
+        <button class="btn btn-sm btn-outline" id="btnExportOverview" title="导出当前视图数据为CSV">↓ CSV</button>
+      </div>
       <div class="kpi-grid" id="kpiGrid"></div>
       <div class="chart-row">
         <div class="chart-card">
@@ -116,6 +146,25 @@
       </div>
     </section>
 
+    <!-- ===== 数据概览 ===== -->
+    <section class="page-section" id="page-etl" style="display:none">
+      <div class="kpi-grid" id="etlKpiGrid"></div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>数据表记录分布</h3><span class="card-hint">各数据表的记录规模对比</span></div>
+          <div class="chart-body chart-body-lg" id="chart-etl-tables"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>数据表详情</h3></div>
+          <div class="table-wrap" id="etlTableDetail"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>数据质量评估</h3></div>
+        <div class="insight-list" id="etlInsights"></div>
+      </div>
+    </section>
+
     <!-- ===== 漏斗诊断 ===== -->
     <section class="page-section" id="page-funnel" style="display:none">
       <div class="chart-row">
@@ -128,25 +177,13 @@
           <div class="loss-list" id="lossList"></div>
         </div>
       </div>
-      <div class="chart-row">
-        <div class="chart-card">
-          <div class="card-header"><h3>渠道切片热力</h3><span class="card-hint">颜色越深代表转化表现越好</span></div>
-          <div class="chart-body" id="chart-funnel-heatmap-channel"></div>
-        </div>
-        <div class="chart-card">
-          <div class="card-header"><h3>品类切片热力</h3><span class="card-hint">按商品品类分析各环节转化率差异</span></div>
-          <div class="chart-body" id="chart-funnel-heatmap-category"></div>
-        </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>月度各阶段转化率趋势</h3><span class="card-hint">基于真实流量数据，按月度统计各环节转化率变化</span></div>
+        <div class="chart-body chart-body-lg" id="chart-funnel-monthly-trend"></div>
       </div>
-      <div class="chart-row">
-        <div class="chart-card">
-          <div class="card-header"><h3>设备切片热力</h3><span class="card-hint">颜色越深代表表现越好，横向比较可定位异常切片</span></div>
-          <div class="chart-body" id="chart-funnel-heatmap-device"></div>
-        </div>
-        <div class="chart-card">
-          <div class="card-header"><h3>时段切片热力</h3><span class="card-hint">按用户活跃时段分析转化差异</span></div>
-          <div class="chart-body" id="chart-funnel-heatmap-hour"></div>
-        </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>漏斗诊断洞察</h3></div>
+        <div class="insight-list" id="funnelInsights"></div>
       </div>
     </section>
 
@@ -162,6 +199,10 @@
           <div class="card-header"><h3>客户聚类分群</h3></div>
           <div class="chart-body" id="chart-cluster-bar"></div>
         </div>
+      </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>Cohort 留存热力图</h3><span class="card-hint">按首次购买月份分组，追踪逐月留存率变化</span></div>
+        <div class="chart-body chart-body-lg" id="chart-cohort-heatmap"></div>
       </div>
       <div class="chart-row">
         <div class="chart-card">
@@ -201,14 +242,6 @@
           <div class="card-header"><h3>未来 7 天 GMV 预测</h3></div>
           <div class="chart-body" id="chart-forecast-gmv"></div>
         </div>
-        <div class="chart-card">
-          <div class="card-header"><h3>品类安全库存</h3></div>
-          <div class="chart-body" id="chart-forecast-category"></div>
-        </div>
-      </div>
-      <div class="chart-card">
-        <div class="card-header"><h3>预测洞察</h3></div>
-        <div class="insight-list" id="forecastInsights"></div>
       </div>
     </section>
 
@@ -241,6 +274,33 @@
       <div class="chart-card">
         <div class="card-header"><h3>综合洞察</h3></div>
         <div class="insight-list" id="decisionInsights"></div>
+      </div>
+    </section>
+
+    <!-- ===== 履约售后 ===== -->
+    <section class="page-section" id="page-fulfillment" style="display:none">
+      <div class="kpi-grid" id="fulfillKpiGrid"></div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-header"><h3>退款原因分布</h3></div>
+          <div class="chart-body" id="chart-refund-reasons"></div>
+        </div>
+        <div class="chart-card">
+          <div class="card-header"><h3>评论评分分布</h3></div>
+          <div class="chart-body" id="chart-review-rating"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>高退款率商品 TOP10</h3><span class="card-hint">按退款率降序排列，仅统计订单数≥5的商品</span></div>
+        <div class="table-wrap" id="topRefundTable"></div>
+      </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>低评分商品 TOP10</h3><span class="card-hint">按平均评分升序排列，仅统计评价数≥5的商品</span></div>
+        <div class="table-wrap" id="topLowRatedTable"></div>
+      </div>
+      <div class="chart-card">
+        <div class="card-header"><h3>履约售后洞察</h3></div>
+        <div class="insight-list" id="fulfillInsights"></div>
       </div>
     </section>
 

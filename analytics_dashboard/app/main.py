@@ -16,6 +16,7 @@ from app.subprojects.customer_clustering import run as run_customer_clustering
 from app.subprojects.association_rules import run as run_association_rules
 from app.subprojects.sales_forecast import run as run_sales_forecast
 from app.subprojects.marketing_attribution import run as run_marketing_attribution
+from app.subprojects.fulfillment_analysis import run as run_fulfillment_analysis
 from app.subprojects.decision_board import run as run_decision_board
 
 app = FastAPI(title="E-Shop Dashboard", version="1.0.0")
@@ -43,6 +44,7 @@ def _get_all_results(force=False):
     ar = run_association_rules()
     sf = run_sales_forecast()
     ma = run_marketing_attribution()
+    fa = run_fulfillment_analysis()
 
     others = {
         "business_health": bh,
@@ -51,7 +53,8 @@ def _get_all_results(force=False):
         "customer_clustering": cc,
         "association_rules": ar,
         "sales_forecast": sf,
-        "marketing_attribution": ma
+        "marketing_attribution": ma,
+        "fulfillment_analysis": fa
     }
     db = run_decision_board(others)
     others["decision_board"] = db
@@ -77,6 +80,65 @@ def health():
         "status": "ok",
         "database": "connected" if db_exists else "not found",
         "db_path": db_path
+    }
+
+
+@app.get("/api/etl-overview")
+def api_etl_overview():
+    from app.data_access import query
+    # 获取所有物理表（非视图）
+    tables = query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    table_info = []
+    total_rows = 0
+
+    # 表类型映射
+    fact_set = {'orders', 'order_items', 'page_events', 'refunds', 'product_reviews', 
+                 'ads_spend', 'shipments', 'payments', 'inventory_movements',
+                 'cart_items', 'carts', 'user_coupons'}
+    dim_set = {'users', 'sku', 'spu', 'categories', 'campaigns', 'coupons', 'addresses'}
+
+    for t in tables:
+        tname = t["name"]
+        try:
+            cnt = query(f"SELECT COUNT(*) AS c FROM \"{tname}\"")[0]["c"]
+        except Exception:
+            cnt = 0
+        cols = query(f"PRAGMA table_info(\"{tname}\")")
+        col_count = len(cols)
+        if tname in fact_set:
+            ttype = "事实表"
+        elif tname in dim_set:
+            ttype = "维度表"
+        else:
+            ttype = "其他"
+        table_info.append({
+            "name": tname,
+            "rows": cnt,
+            "columns": col_count,
+            "type": ttype
+        })
+        total_rows += cnt
+
+    # 数据质量概览
+    date_range = query("SELECT MIN(order_date) AS min_date, MAX(order_date) AS max_date FROM fact_order")
+    order_count = query("SELECT COUNT(*) AS c FROM fact_order")
+    user_count = query("SELECT COUNT(*) AS c FROM dim_user")
+    product_count = query("SELECT COUNT(*) AS c FROM dim_product")
+    traffic_count = query("SELECT COUNT(*) AS c FROM fact_traffic")
+
+    return {
+        "tables": table_info,
+        "total_tables": len(table_info),
+        "total_records": total_rows,
+        "date_range": {
+            "min": date_range[0]["min_date"] if date_range else None,
+            "max": date_range[0]["max_date"] if date_range else None
+        },
+        "order_count": order_count[0]["c"] if order_count else 0,
+        "user_count": user_count[0]["c"] if user_count else 0,
+        "product_count": product_count[0]["c"] if product_count else 0,
+        "traffic_count": traffic_count[0]["c"] if traffic_count else 0,
+        "data_version": "course_dataset_v2"
     }
 
 
@@ -118,6 +180,7 @@ def api_summary():
         "monthly_trend": bh.get("monthly_trend", []),
         "funnel": bh.get("funnel", {}),
         "funnel_rates": bh.get("funnel_rates", {}),
+        "monthly_funnel_trend": bh.get("monthly_funnel_trend", []),
         "channel_breakdown": bh.get("channel_breakdown", []),
         "rfm_summary": fe.get("summary", {}),
         "rfm_distribution": fe.get("rfm_distribution", {}),

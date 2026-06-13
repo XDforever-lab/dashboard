@@ -117,6 +117,57 @@ def run():
     if avg_recency > 30:
         insights.append(f"整体用户平均最近购买间隔超过30天，存在用户活跃度下降风险，建议加大促销活动和内容推送频次")
 
+    # Cohort retention matrix
+    # Step 1: Find each user's true first order month
+    user_first = query("""
+        SELECT user_id, strftime('%Y-%m', MIN(order_date)) AS cohort_month
+        FROM fact_order
+        WHERE status IN ('paid', 'completed')
+        GROUP BY user_id
+    """)
+    # Step 2: Find all user-month pairs (orders in each month)
+    order_months = query("""
+        SELECT user_id, strftime('%Y-%m', order_date) AS order_month
+        FROM fact_order
+        WHERE status IN ('paid', 'completed')
+        GROUP BY user_id, strftime('%Y-%m', order_date)
+    """)
+
+    # Build cohort data structures
+    cohort_map = {}
+    for row in user_first:
+        cm = row["cohort_month"]
+        cohort_map[cm] = {"users": set(), "months": {}}
+    for row in user_first:
+        cm = row["cohort_month"]
+        uid = row["user_id"]
+        cohort_map[cm]["users"].add(uid)
+
+    for row in order_months:
+        uid = row["user_id"]
+        om = row["order_month"]
+        # Find this user's cohort month
+        for cm_row in user_first:
+            if cm_row["user_id"] == uid:
+                cm = cm_row["cohort_month"]
+                if om not in cohort_map[cm]["months"]:
+                    cohort_map[cm]["months"][om] = set()
+                cohort_map[cm]["months"][om].add(uid)
+                break
+
+    # Build matrix: only take latest 12 cohorts, max 12 periods
+    sorted_cohorts = sorted(cohort_map.keys())[-12:]
+    cohort_matrix = []
+    for ci, cm in enumerate(sorted_cohorts):
+        cohort_size = len(cohort_map[cm]["users"])
+        row_data = {"cohort": cm, "size": cohort_size, "rates": []}
+        for pi in range(min(12, len(sorted_cohorts) - ci)):
+            target_month = _add_months(cm, pi)
+            retained = len(cohort_map[cm]["months"].get(target_month, set()))
+            rate = round(retained / cohort_size, 4) if cohort_size > 0 else 0
+            row_data["rates"].append(rate)
+        cohort_matrix.append(row_data)
+
     return {
         "title": "用户建模宽表 (RFM)",
         "description": "基于RFM框架构建用户特征宽表，为复购预测和客户分群提供统一特征底座",
@@ -130,5 +181,15 @@ def run():
         "rfm_distribution": {
             "labels": label_counts
         },
+        "cohort_matrix": cohort_matrix,
         "insights": insights
     }
+
+
+def _add_months(ym, offset):
+    y, m = int(ym[:4]), int(ym[5:7])
+    m += offset
+    while m > 12:
+        y += 1
+        m -= 12
+    return f"{y}-{m:02d}"

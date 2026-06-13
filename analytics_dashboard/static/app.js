@@ -32,18 +32,21 @@ const API = {
 
 const TITLES = {
   overview: '经营总览',
+  etl: '数据概览',
   funnel: '漏斗诊断',
   customer: '客户分析',
   product: '商品与购物车',
   forecast: '预测与库存',
   marketing: '营销利润',
   decision: '综合诊断',
+  fulfillment: '履约售后',
   ai: 'AI 分析助手',
   config: '系统配置',
 };
 
 let _allData = null;
 let _subData = {};
+let _overviewData = null;
 
 // ========== Init ==========
 document.addEventListener('DOMContentLoaded', () => {
@@ -89,11 +92,45 @@ function renderActivePage() {
 }
 
 async function loadData(forceReload) {
+  document.getElementById('loadingOverlay').style.display = 'flex';
   document.getElementById('updateTime').textContent = '加载中...';
 
-  // Sidebar overview
+  // Cycling tips during loading
+  const LOADING_TIPS = [
+    { title: 'CRISP-DM 方法论', desc: '商业理解 → 数据理解 → 数据准备 → 建模 → 评估 → 部署' },
+    { title: 'RFM 用户分群', desc: 'Recency(近度) × Frequency(频次) × Monetary(金额) 三维评估用户价值' },
+    { title: 'Cohort 留存分析', desc: '按首购月份分组，追踪每批用户后续月份的复购留存率' },
+    { title: 'Apriori 关联规则', desc: '基于购物篮共现挖掘商品组合，计算支持度、置信度、提升度' },
+    { title: '移动平均预测', desc: '30天滑动窗口 + 线性趋势外推，预测未来7天GMV与安全库存' },
+    { title: 'WBS 甘特图', desc: '将项目拆解为6个可交付阶段，展示V1-V6渐进式交付进度' },
+    { title: '安全库存模型', desc: '日波动系数 CV × 1.5 安全系数，按品类计算建议备货金额' },
+    { title: '营销归因', desc: '按渠道拆分GMV与ROAS，识别高效渠道 → 优化预算分配' },
+    { title: '数据建模', desc: '10万+仿真订单数据，涵盖2年电商经营全场景' },
+  ];
+  let tipTimer = null;
+  let tipIdx = 0;
+  const tipEl = document.getElementById('loadingSub');
+  const startTips = () => {
+    if (tipEl) tipEl.textContent = `${LOADING_TIPS[tipIdx].title}：${LOADING_TIPS[tipIdx].desc}`;
+    tipTimer = setInterval(() => {
+      tipIdx = (tipIdx + 1) % LOADING_TIPS.length;
+      if (tipEl) tipEl.textContent = `${LOADING_TIPS[tipIdx].title}：${LOADING_TIPS[tipIdx].desc}`;
+    }, 3000);
+  };
+  startTips();
+  const stopTips = () => { if (tipTimer) { clearInterval(tipTimer); tipTimer = null; } };
+
+  const setProgress = (pct, text, sub = '') => {
+    document.getElementById('loadingText').textContent = text;
+    document.getElementById('loadingSub').textContent = sub;
+    document.getElementById('loadingBar').style.width = pct + '%';
+  };
+
+  // Step 1: Sidebar overview
+  setProgress(5, '正在加载数据...', '获取基础指标');
   const ov = await API.overview();
   if (ov) {
+    _overviewData = ov;
     document.getElementById('footerDateRange').textContent =
       `${ov.date_range?.min || '-'} 至 ${ov.date_range?.max || '-'}`;
     document.getElementById('footerOrders').textContent = (ov.orders || 0).toLocaleString();
@@ -107,11 +144,14 @@ async function loadData(forceReload) {
     if (heroUsers) heroUsers.textContent = fmtNum(ov.users || 0);
   }
 
-  // Refresh data
+  // Step 2: Reload (longest step)
   if (forceReload) {
+    setProgress(10, '正在计算分析结果...', '首次加载需运算所有子项目，请耐心等待');
     await fetch('/api/reload', { method: 'POST' }).catch(() => {});
   }
 
+  // Step 3: Summary
+  setProgress(80, '正在汇总数据...', '获取经营总览');
   const data = await API.summary();
   if (data) {
     _allData = data;
@@ -119,17 +159,34 @@ async function loadData(forceReload) {
       `数据更新于 ${data.computed_at || '-'}`;
   }
 
-  // Load subproject details
+  // Step 4-10: Load subproject details
   const subIds = [
     'customer_clustering', 'feature_engineering', 'repurchase_prediction',
-    'association_rules', 'sales_forecast', 'marketing_attribution'
+    'association_rules', 'sales_forecast', 'marketing_attribution',
+    'fulfillment_analysis'
   ];
-  for (const id of subIds) {
-    const sub = await API.subproject(id);
-    if (sub) _subData[id] = sub;
+  const subNames = [
+    '客户分群', '用户特征宽表', '复购预测',
+    '关联规则', '销售预测', '营销归因',
+    '履约售后分析'
+  ];
+  for (let i = 0; i < subIds.length; i++) {
+    const pct = 80 + Math.round((i + 1) / subIds.length * 15);
+    setProgress(pct, `正在加载子项目 ${i + 1}/${subIds.length}`, subNames[i]);
+    const sub = await API.subproject(subIds[i]);
+    if (sub) _subData[subIds[i]] = sub;
   }
+
+  // Step 11: Decision board
+  setProgress(98, '正在生成决策建议...', '综合诊断');
   const db = await API.decision();
   if (db) _subData['decision_board'] = db;
+
+  setProgress(100, '加载完成', '');
+  stopTips();
+  setTimeout(() => {
+    document.getElementById('loadingOverlay').style.display = 'none';
+  }, 300);
 }
 
 // ========== Page Router ==========
@@ -137,19 +194,163 @@ function renderPage(page) {
   if (!_allData) return;
   switch (page) {
     case 'overview':  renderOverview(); break;
+    case 'etl':       renderETL(); break;
     case 'funnel':    renderFunnel(); break;
     case 'customer':  renderCustomer(); break;
     case 'product':   renderProduct(); break;
     case 'forecast':  renderForecast(); break;
     case 'marketing': renderMarketing(); break;
     case 'decision':  renderDecision(); break;
+    case 'fulfillment': renderFulfillment(); break;
     case 'ai':        break;
     case 'config':    renderConfig(); break;
   }
 }
 
+// ========== ETL Data Overview ==========
+async function renderETL() {
+  const etl = await API.fetch('/api/etl-overview');
+  if (!etl) {
+    document.getElementById('etlKpiGrid').innerHTML = '<div style="padding:20px;text-align:center;color:#999">数据加载失败</div>';
+    return;
+  }
+
+  // KPI Cards
+  const factTables = (etl.tables || []).filter(t => t.type === '事实表');
+  const dimTables = (etl.tables || []).filter(t => t.type === '维度表');
+  document.getElementById('etlKpiGrid').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">数据表总数</div>
+      <div class="kpi-value">${etl.total_tables}</div>
+      <div class="kpi-sub">${factTables.length} 事实表 + ${dimTables.length} 维度表</div>
+    </div>
+    <div class="kpi-card accent-green">
+      <div class="kpi-label">总记录数</div>
+      <div class="kpi-value">${fmtNum(etl.total_records)}</div>
+      <div class="kpi-sub">订单 ${fmtNum(etl.order_count)} | 事件 ${fmtNum(etl.traffic_count)} | 用户 ${fmtNum(etl.user_count)}</div>
+    </div>
+    <div class="kpi-card accent-orange">
+      <div class="kpi-label">商品 SKU 数</div>
+      <div class="kpi-value">${fmtNum(etl.product_count)}</div>
+      <div class="kpi-sub">数据版本: ${etl.data_version}</div>
+    </div>
+    <div class="kpi-card accent-teal">
+      <div class="kpi-label">数据时间范围</div>
+      <div class="kpi-value" style="font-size:18px">${etl.date_range?.min || '-'} ~ ${etl.date_range?.max || '-'}</div>
+      <div class="kpi-sub">覆盖 24 个月电商经营数据</div>
+    </div>
+  `;
+
+  // Table distribution chart - show all tables grouped by type
+  const factShow = [...factTables].slice(0, 6);
+  const dimShow = [...dimTables].slice(0, 6);
+  const otherTables = (etl.tables || []).filter(t => t.type !== '事实表' && t.type !== '维度表');
+  const showTables = [...factShow, ...dimShow, ...otherTables.slice(0, 3)];
+
+  renderChart('chart-etl-tables', {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      formatter: params => {
+        let html = `<strong>${params[0].name}</strong><br/>`;
+        params.forEach(p => html += `${p.marker} ${p.seriesName}: <strong>${fmtNum(p.value)}</strong><br/>`);
+        return html;
+      }
+    },
+    legend: { data: ['记录数', '字段数'], top: 10 },
+    grid: { left: 80, right: 40, top: 50, bottom: 80 },
+    xAxis: {
+      type: 'category',
+      data: showTables.map(t => t.name),
+      axisLabel: { rotate: 45, fontSize: 11 }
+    },
+    yAxis: [
+      { type: 'value', name: '记录数', axisLabel: { formatter: v => fmtNum(v) } },
+      { type: 'value', name: '字段数' }
+    ],
+    series: [
+      {
+        name: '记录数', type: 'bar',
+        data: showTables.map(t => t.rows),
+        itemStyle: { color: '#2b6fbb' },
+        barMaxWidth: 32
+      },
+      {
+        name: '字段数', type: 'bar', yAxisIndex: 1,
+        data: showTables.map(t => t.columns),
+        itemStyle: { color: '#d9822b' },
+        barMaxWidth: 32
+      }
+    ]
+  });
+
+  // Table detail
+  const allTables = [...(etl.tables || [])].sort((a, b) => b.rows - a.rows);
+  document.getElementById('etlTableDetail').innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>表名</th>
+          <th>类型</th>
+          <th>记录数</th>
+          <th>字段数</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${allTables.map(t => {
+          const tagClass = t.type === '事实表' ? 'tag-p0' : t.type === '维度表' ? 'tag-p1' : 'tag-p2';
+          return `
+            <tr>
+              <td><strong>${t.name}</strong></td>
+              <td><span class="tag ${tagClass}">${t.type}</span></td>
+              <td>${fmtNum(t.rows)}</td>
+              <td>${t.columns}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+
+  // Insights
+  const insights = [];
+  const factTotal = factTables.reduce((s, t) => s + t.rows, 0);
+  const dimTotal = dimTables.reduce((s, t) => s + t.rows, 0);
+  insights.push(`数据集覆盖 ${etl.date_range?.min || '?'} 至 ${etl.date_range?.max || '?'} 共 24 个月的电商经营数据，核心事实表 orders（${fmtNum(etl.order_count)} 条）和 page_events（${fmtNum(etl.traffic_count)} 条）驱动全部分析。`);
+  insights.push(`数据由固定种子 seed.js 生成（${etl.data_version}），确保每次实验可复现，适合教学和作业统一使用。`);
+  const maxTable = allTables.length > 0 ? allTables[0] : { name: '-', rows: 0 };
+  insights.push(`最大数据表「${maxTable.name}」(${fmtNum(maxTable.rows)} 条记录)，建议建模时考虑采样或索引优化。`);
+  renderInsights('etlInsights', insights);
+
+  // CSV export for ETL table
+  addExportBtn('etlTableDetail', () =>
+    allTables.map(t => ({
+      表名: t.name,
+      类型: t.type,
+      记录数: t.rows,
+      字段数: t.columns
+    })),
+    'etl_tables.csv'
+  );
+}
+
 // ========== Overview ==========
 function renderOverview() {
+  // 同步更新侧边栏底部 + Hero区统计（每次切回概览页兜底刷新）
+  const ov = _overviewData;
+  if (ov) {
+    document.getElementById('footerDateRange').textContent =
+      `${ov.date_range?.min || '-'} 至 ${ov.date_range?.max || '-'}`;
+    document.getElementById('footerOrders').textContent = (ov.orders || 0).toLocaleString();
+    document.getElementById('footerEvents').textContent = (ov.events || 0).toLocaleString();
+    document.getElementById('footerUsers').textContent = (ov.users || 0).toLocaleString();
+    const ho = document.getElementById('heroOrders');
+    const he = document.getElementById('heroEvents');
+    const hu = document.getElementById('heroUsers');
+    if (ho) ho.textContent = fmtNum(ov.orders || 0);
+    if (he) he.textContent = fmtNum(ov.events || 0);
+    if (hu) hu.textContent = fmtNum(ov.users || 0);
+  }
+
   const { kpi, monthly_trend, funnel, funnel_rates, channel_breakdown, insights } = _allData;
 
   // KPI Cards
@@ -187,18 +388,21 @@ function renderOverview() {
     </div>
   `;
 
-  // Monthly Trend
+  // Monthly Trend - dual Y-axis
   if (monthly_trend?.length) {
     renderChart('chart-monthly-trend', {
       tooltip: { trigger: 'axis' },
       xAxis: { type: 'category', data: monthly_trend.map(m => m.month) },
-      yAxis: { type: 'value', axisLabel: { formatter: fmtShort } },
+      yAxis: [
+        { type: 'value', name: 'GMV (元)', axisLabel: { formatter: fmtShort }, nameTextStyle: { fontSize: 11 } },
+        { type: 'value', name: '订单数', axisLabel: { formatter: fmtShort }, nameTextStyle: { fontSize: 11 } }
+      ],
       series: [
         { name: 'GMV', type: 'line', data: monthly_trend.map(m => m.gmv), smooth: true, areaStyle: { opacity: 0.15 }, itemStyle: { color: '#4facfe' } },
-        { name: '订单数', type: 'line', data: monthly_trend.map(m => m.orders), smooth: true, itemStyle: { color: '#2ecc71' } },
+        { name: '订单数', type: 'line', yAxisIndex: 1, data: monthly_trend.map(m => m.orders), smooth: true, itemStyle: { color: '#2ecc71' } },
       ],
       legend: { data: ['GMV', '订单数'], bottom: 0 },
-      grid: { top: 20, right: 20, bottom: 40, left: 60 },
+      grid: { top: 30, right: 60, bottom: 40, left: 60 },
     });
   }
 
@@ -247,6 +451,9 @@ function renderOverview() {
   // Insights
   const allInsights = insights || [];
   renderInsights('overviewInsights', allInsights);
+
+  // Populate filters
+  populateOverviewFilters();
 }
 
 // ========== Funnel Diagnosis ==========
@@ -306,59 +513,43 @@ function renderFunnel() {
     </div>
   `).join('');
 
-  // Channel heatmap (from real data)
-  const channelData = _allData?.channel_breakdown || [];
-  if (channelData.length > 0) {
-    const channels = channelData.map(c => c.channel);
-    const fnSteps = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
-    const heatData = [];
-    channels.forEach((ch, ci) => {
-      fnSteps.forEach((st, si) => {
-        heatData.push([si, ci, Math.round(30 + Math.random() * 65)]);
-      });
+  // Monthly conversion rate trend (replaces fake heatmaps with real data)
+  const mft = _allData?.monthly_funnel_trend || [];
+  if (mft.length > 0) {
+    const months = mft.map(d => d.month);
+    renderChart('chart-funnel-monthly-trend', {
+      tooltip: {
+        trigger: 'axis',
+        formatter: params => {
+          let html = `<strong>${params[0].axisValue}</strong><br/>`;
+          params.forEach(p => {
+            html += `${p.marker} ${p.seriesName}: <strong>${(p.value * 100).toFixed(1)}%</strong><br/>`;
+          });
+          return html;
+        }
+      },
+      legend: { data: ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'], top: 10 },
+      grid: { left: 60, right: 40, top: 50, bottom: 40 },
+      xAxis: { type: 'category', data: months, axisLabel: { rotate: 45, fontSize: 11 } },
+      yAxis: { type: 'value', axisLabel: { formatter: v => (v * 100).toFixed(0) + '%' }, min: 0 },
+      series: [
+        { name: '首页→商品页', type: 'line', data: mft.map(d => d.vp_rate), smooth: true, lineStyle: { width: 2.5 }, itemStyle: { color: '#2b6fbb' } },
+        { name: '商品页→加购', type: 'line', data: mft.map(d => d.pc_rate), smooth: true, lineStyle: { width: 2.5 }, itemStyle: { color: '#16866f' } },
+        { name: '加购→结算', type: 'line', data: mft.map(d => d.cc_rate), smooth: true, lineStyle: { width: 2.5 }, itemStyle: { color: '#d9822b' } },
+        { name: '结算→支付', type: 'line', data: mft.map(d => d.cp_rate), smooth: true, lineStyle: { width: 2.5 }, itemStyle: { color: '#c94a4a' } },
+      ],
     });
-    renderHeatmapChart('chart-funnel-heatmap-channel', fnSteps, channels, heatData,
-      ['#f7efe4', '#ead3b8', '#d9a46e', '#b86f42', '#6f3d2d']);
   } else {
-    document.getElementById('chart-funnel-heatmap-channel').innerHTML =
-      '<div style="padding:40px;text-align:center;color:#999">渠道数据暂不可用</div>';
+    document.getElementById('chart-funnel-monthly-trend').innerHTML =
+      '<div style="padding:40px;text-align:center;color:#999">月度漏斗趋势数据暂不可用</div>';
   }
 
-  // Device heatmap
-  const devices = ['iOS', 'Android', 'PC Web', 'iPad'];
-  const fnSteps2 = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
-  const deviceHeatData = [];
-  devices.forEach((dev, di) => {
-    fnSteps2.forEach((st, si) => {
-      deviceHeatData.push([si, di, Math.round(25 + Math.random() * 70)]);
-    });
-  });
-  renderHeatmapChart('chart-funnel-heatmap-device', fnSteps2, devices, deviceHeatData,
-    ['#edf4ec', '#cfe3d4', '#91c1a1', '#4f9276', '#175d50']);
-
-  // Category heatmap
-  const categoryList = ['美妆个护', '食品饮料', '家居生活', '数码配件', '运动户外', '母婴用品'];
-  const fnSteps3 = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
-  const catHeatData = [];
-  categoryList.forEach((cat, ci) => {
-    fnSteps3.forEach((st, si) => {
-      catHeatData.push([si, ci, Math.round(20 + Math.random() * 75)]);
-    });
-  });
-  renderHeatmapChart('chart-funnel-heatmap-category', fnSteps3, categoryList, catHeatData,
-    ['#fff0ea', '#f5c8be', '#e99584', '#dd6b5f', '#9f453e']);
-
-  // Hour heatmap
-  const hourList = ['00-06点', '06-09点', '09-12点', '12-14点', '14-18点', '18-21点', '21-24点'];
-  const fnSteps4 = ['首页→商品页', '商品页→加购', '加购→结算', '结算→支付'];
-  const hourHeatData = [];
-  hourList.forEach((hr, hi) => {
-    fnSteps4.forEach((st, si) => {
-      hourHeatData.push([si, hi, Math.round(15 + Math.random() * 80)]);
-    });
-  });
-  renderHeatmapChart('chart-funnel-heatmap-hour', fnSteps4, hourList, hourHeatData,
-    ['#eef2f0', '#c9d9d6', '#86aaa8', '#3f7f88', '#1f4f59']);
+  // Funnel insights
+  const funnelInsightItems = (bh?.insights || []).filter(i =>
+    i.includes('转化') || i.includes('漏斗') || i.includes('首页') || i.includes('商品页') || i.includes('加购') || i.includes('结算') || i.includes('支付')
+  );
+  if (funnelInsightItems.length === 0) funnelInsightItems.push('漏斗各环节转化率正常，继续保持');
+  renderInsights('funnelInsights', funnelInsightItems);
 }
 
 function renderHeatmapChart(id, xLabels, yLabels, data, colors) {
@@ -469,6 +660,56 @@ function renderCustomer() {
     renderSegmentBars('chart-cluster-bar', segments);
   }
 
+  // Cohort Retention Heatmap
+  const cohortMatrix = fe?.cohort_matrix || [];
+  if (cohortMatrix.length > 0) {
+    const cohortLabels = cohortMatrix.map(c => c.cohort);
+    const maxPeriods = Math.max(...cohortMatrix.map(c => c.rates.length));
+    const periodLabels = Array.from({length: maxPeriods}, (_, i) => `M${i}`);
+    const heatData = [];
+    cohortMatrix.forEach((c, ci) => {
+      c.rates.forEach((rate, pi) => {
+        heatData.push([pi, ci, rate]);
+      });
+    });
+    renderChart('chart-cohort-heatmap', {
+      tooltip: {
+        position: 'top',
+        formatter: p => `${cohortLabels[p.value[1]]}<br/>M${p.value[0]}: <strong>${(p.value[2] * 100).toFixed(1)}%</strong>`
+      },
+      grid: { left: 80, right: 60, top: 20, bottom: 60 },
+      xAxis: {
+        type: 'category', data: periodLabels,
+        axisLabel: { fontSize: 11, color: '#667085' },
+        name: '距首购月份', nameLocation: 'middle', nameGap: 35
+      },
+      yAxis: {
+        type: 'category', data: cohortLabels,
+        axisLabel: { fontSize: 11, color: '#667085' },
+        name: '首次购买月份', nameLocation: 'middle', nameGap: 65
+      },
+      visualMap: {
+        min: 0, max: 1, show: false,
+        inRange: { color: ['#f7efe4', '#ead3b8', '#d9a46e', '#b86f42', '#6f3d2d'] }
+      },
+      series: [{
+        type: 'heatmap', data: heatData,
+        label: {
+          show: true, fontSize: 11,
+          formatter: p => (p.value[2] * 100).toFixed(0) + '%',
+          color: p => p.value[2] > 0.3 ? '#fff' : '#3f342d',
+          fontWeight: 600
+        },
+        emphasis: {
+          itemStyle: { borderColor: '#fff', borderWidth: 2, shadowBlur: 8 }
+        }
+      }]
+    });
+  } else {
+    document.getElementById('chart-cohort-heatmap').innerHTML =
+      '<div style="padding:40px;text-align:center;color:#999">暂无Cohort数据</div>';
+  }
+
   // Repurchase top users
   const hpUsers = rp?.high_potential_users || [];
   if (hpUsers.length > 0) {
@@ -483,6 +724,34 @@ function renderCustomer() {
       }],
       grid: { top: 10, right: 20, bottom: 50, left: 50 },
     });
+  }
+
+  // Model metrics
+  const rpSummary = rp?.summary || {};
+  const modelTypeMap = { 'rule_based_scoring': '综合评分模型' };
+  const featureMap = { 'recency_score': '近度', 'frequency_score': '频次', 'monetary_score': '消费力', 'trend_score': '趋势' };
+  if (Object.keys(rpSummary).length > 0) {
+    const existingGrid = document.getElementById('rfmKpiGrid');
+    if (existingGrid) {
+      const modelHtml = `
+        <div class="kpi-card accent-coral" style="--accent:var(--coral)">
+          <div class="kpi-label">复购模型</div>
+          <div class="kpi-value" style="font-size:18px">${modelTypeMap[rp?.model?.type] || rp?.model?.type || '评分模型'}</div>
+          <div class="kpi-sub">综合评分 ≥ ${rp?.model?.threshold || 60} 判定为高潜</div>
+        </div>
+        <div class="kpi-card accent-green" style="--accent:var(--green)">
+          <div class="kpi-label">高潜用户数</div>
+          <div class="kpi-value">${fmtNum(rpSummary.high_potential_count || 0)}</div>
+          <div class="kpi-sub">触达率 ${((rpSummary.touch_rate || 0) * 100).toFixed(1)}%</div>
+        </div>
+        <div class="kpi-card accent-orange" style="--accent:var(--orange)">
+          <div class="kpi-label">预估 ROI</div>
+          <div class="kpi-value">${(rpSummary.estimated_roi || 0).toFixed(2)}x</div>
+          <div class="kpi-sub">维度: ${(rp?.model?.features || []).map(f => featureMap[f] || f).join('、')}</div>
+        </div>
+      `;
+      existingGrid.insertAdjacentHTML('beforeend', modelHtml);
+    }
   }
 
   const allInsights = [
@@ -505,11 +774,13 @@ function renderProduct() {
 
   document.getElementById('assocRulesTable').innerHTML = rules.length > 0 ? `
     <table>
-      <thead><tr><th>前项</th><th>后项</th><th>支持度</th><th>置信度</th><th>提升度</th><th>建议</th></tr></thead>
+      <thead><tr><th>前项</th><th>后项</th><th>支持度</th><th>共现次数</th><th>置信度</th><th>提升度</th><th>建议</th></tr></thead>
       <tbody>${rules.map(r => `
         <tr>
           <td>${r.antecedent}</td><td>${r.consequent}</td>
-          <td>${r.support.toFixed(4)}</td><td>${r.confidence.toFixed(4)}</td>
+          <td>${r.support_pct != null ? r.support_pct.toFixed(2) + '%' : r.support.toFixed(4)}</td>
+          <td>${r.pair_count || '-'}</td>
+          <td>${(r.confidence * 100).toFixed(1)}%</td>
           <td class="${r.lift > 2 ? 'positive' : ''}">${r.lift}</td>
           <td><span class="tag ${r.lift > 2 ? 'tag-p2' : r.lift > 1.5 ? 'tag-p1' : 'tag-p0'}">${r.business_suggestion}</span></td>
         </tr>
@@ -518,30 +789,49 @@ function renderProduct() {
   ` : '<div style="padding:20px;text-align:center;color:#999">暂无关联规则数据</div>';
 
   renderInsights('productInsights', ar?.insights || []);
+
+  // CSV export for assoc rules
+  if (rules.length > 0) {
+    addExportBtn('assocRulesTable', () =>
+      rules.map(r => ({
+        前项: r.antecedent,
+        后项: r.consequent,
+        支持度: r.support,
+        置信度: r.confidence,
+        提升度: r.lift,
+        建议: r.business_suggestion
+      })),
+      'association_rules.csv'
+    );
+  }
 }
 
 // ========== Forecast ==========
 function renderForecast() {
   const sf = _subData['sales_forecast'];
   const fc = sf?.forecast || {};
-  const cats = sf?.top_categories || [];
+  const mdc = sf?.monthly_decomposition || [];
 
   document.getElementById('forecastKpiGrid').innerHTML = `
     <div class="kpi-card">
       <div class="kpi-label">日均 GMV</div>
       <div class="kpi-value">${fmtMoney(fc.daily_avg_gmv || 0)}</div>
+      <div class="kpi-sub">预测方法: ${sf?.method === 'moving_average_30d' ? '30天移动平均+线性趋势' : sf?.method || '移动平均'}</div>
     </div>
     <div class="kpi-card accent-orange">
       <div class="kpi-label">日波动 (CV)</div>
       <div class="kpi-value">${((fc.cv || 0) * 100).toFixed(2)}%</div>
+      <div class="kpi-sub">RMSE: ${fmtMoney(fc.rmse || 0)}</div>
     </div>
     <div class="kpi-card accent-purple">
       <div class="kpi-label">安全库存金额</div>
       <div class="kpi-value">${fmtMoney(fc.safety_stock_gmv || 0)}</div>
+      <div class="kpi-sub">MAE: ${fmtMoney(fc.mae || 0)}</div>
     </div>
     <div class="kpi-card accent-teal">
-      <div class="kpi-label">数据天数</div>
-      <div class="kpi-value">${sf?.summary?.data_days || 0} 天</div>
+      <div class="kpi-label">预测精度</div>
+      <div class="kpi-value">${fc.mape != null ? fc.mape.toFixed(1) + '%' : '-'}</div>
+      <div class="kpi-sub">MAPE 越低越准确</div>
     </div>
   `;
 
@@ -553,7 +843,7 @@ function renderForecast() {
     renderChart('chart-forecast-gmv', {
       tooltip: { trigger: 'axis' },
       xAxis: { type: 'category', data: days },
-      yAxis: { type: 'value', axisLabel: { formatter: fmtShort } },
+      yAxis: { type: 'value', scale: true, axisLabel: { formatter: fmtShort } },
       series: [
         { name: '预测 GMV', type: 'line', data: next7, itemStyle: { color: '#4facfe' }, areaStyle: { opacity: 0.1, color: '#4facfe' } },
         { name: '下限', type: 'line', data: lower, lineStyle: { type: 'dashed', color: '#bbb' }, itemStyle: { color: '#bbb' }, symbol: 'none' },
@@ -564,11 +854,38 @@ function renderForecast() {
     });
   }
 
-  if (cats.length > 0) {
-    renderInventoryBars('chart-forecast-category', cats);
+  // Monthly decomposition chart
+  if (mdc.length > 0) {
+    const chartRow = document.querySelector('#page-forecast .chart-row');
+    if (chartRow && chartRow.nextElementSibling?.classList?.contains('chart-row')) {
+      // already exists, skip
+    } else {
+      const decompCard = document.createElement('div');
+      decompCard.className = 'chart-card';
+      decompCard.style.marginBottom = '20px';
+      decompCard.innerHTML = `
+        <div class="card-header"><h3>月度 GMV 趋势分解</h3><span class="card-hint">原始值与趋势线对比</span></div>
+        <div class="chart-body chart-body-lg" id="chart-forecast-decomp"></div>
+      `;
+      const section = document.getElementById('page-forecast');
+      const insightCard = section.querySelector('.chart-card:last-child');
+      if (insightCard) {
+        section.insertBefore(decompCard, insightCard);
+      }
+    }
+    const months = mdc.map(d => d.month);
+    renderChart('chart-forecast-decomp', {
+      tooltip: { trigger: 'axis' },
+      legend: { data: ['实际 GMV', '趋势线'], top: 10 },
+      grid: { left: 70, right: 30, top: 50, bottom: 50 },
+      xAxis: { type: 'category', data: months, axisLabel: { rotate: 45, fontSize: 10 } },
+      yAxis: { type: 'value', axisLabel: { formatter: fmtShort } },
+      series: [
+        { name: '实际 GMV', type: 'bar', data: mdc.map(d => d.value), itemStyle: { color: '#a0c4e8' }, barMaxWidth: 20 },
+        { name: '趋势线', type: 'line', data: mdc.map(d => d.trend), smooth: true, lineStyle: { width: 3, color: '#2b6fbb' }, itemStyle: { color: '#2b6fbb' }, symbol: 'circle', symbolSize: 6 },
+      ]
+    });
   }
-
-  renderInsights('forecastInsights', sf?.insights || []);
 }
 
 // ========== Marketing ==========
@@ -650,6 +967,23 @@ function renderMarketing() {
     ...budgetSuggestions.map(b => `${b.reason}（当前: ${fmtMoney(b.current_budget)} → 建议: ${fmtMoney(b.suggested_budget)}）`),
   ];
   renderInsights('marketingInsights', allInsights);
+
+  // CSV export for channel efficiency
+  if (channels.length > 0) {
+    addExportBtn('channelEfficiencyTable', () =>
+      channels.map(c => ({
+        渠道: c.channel,
+        GMV: c.gmv,
+        花费: c.spend,
+        CTR: (c.ctr * 100).toFixed(2) + '%',
+        CVR: (c.cvr * 100).toFixed(2) + '%',
+        CPA: c.cpa,
+        ROAS: c.roas.toFixed(2),
+        建议: c.action
+      })),
+      'channel_efficiency.csv'
+    );
+  }
 }
 
 // ========== Decision ==========
@@ -657,6 +991,7 @@ function renderDecision() {
   const db = _subData['decision_board'];
   const ds = db?.summary || {};
   const decisions = db?.decisions || [];
+  const roadmap = db?.git_roadmap || [];
 
   const healthScore = ds.health_score || '未知';
   const emoji = healthScore === '良好' ? '\u2705' : healthScore === '预警' ? '\u26A0\uFE0F' : '\uD83D\uDCCA';
@@ -679,6 +1014,16 @@ function renderDecision() {
     </div>
   `;
 
+  // WBS Gantt Chart
+  if (roadmap.length > 0) {
+    renderGanttChart(roadmap);
+  }
+
+  // Risk Matrix
+  if (decisions.length > 0) {
+    renderRiskMatrix(decisions, ds);
+  }
+
   document.getElementById('decisionList').innerHTML = decisions.length > 0
     ? decisions.map(d => `
       <div class="decision-item">
@@ -699,6 +1044,276 @@ function renderDecision() {
   renderInsights('decisionInsights', db?.insights || []);
 }
 
+function renderGanttChart(roadmap) {
+  const target = document.getElementById('decisionSummary');
+  if (!target) return;
+
+  const phases = [
+    { label: 'V1', title: '需求分析', desc: '梳理两门课程知识点，确定RFM/Cohort/CRISP-DM等分析框架', color: '#dd6b5f' },
+    { label: 'V2', title: '数据建模', desc: '生成10万+仿真电商数据，设计事实表+维度表数仓模型', color: '#d9822b' },
+    { label: 'V3', title: '后端接口', desc: 'FastAPI构建10个子项目分析引擎，SQLite+VIEW数据层', color: '#16866f' },
+    { label: 'V4', title: '可视化', desc: 'ECharts+SVG双引擎，11个Tab完整覆盖', color: '#2b6fbb' },
+    { label: 'V5', title: '决策诊断', desc: 'WBS甘特图+风险矩阵+健康度评分决策看板', color: '#8162a8' },
+    { label: 'V6', title: '联调交付', desc: '统一端口9002，CSV导出+筛选器+README', color: '#268a9a' },
+  ];
+
+  const existing = document.getElementById('gantt-chart-wrapper');
+  if (existing) existing.remove();
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'gantt-chart-wrapper';
+  wrapper.className = 'chart-card';
+  wrapper.style.marginBottom = '16px';
+  wrapper.innerHTML = `
+    <div class="card-header"><h3>WBS 项目阶段甘特图</h3><span class="card-hint">V1 → V6 渐进式构建过程</span></div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;line-height:1.5">
+      <tbody>
+        ${phases.map((p, i) => `
+        <tr style="border-bottom:1px solid #eee">
+          <td style="padding:8px 10px;white-space:nowrap;font-weight:600;vertical-align:middle">
+            <span style="display:inline-block;width:32px;height:22px;line-height:22px;border-radius:4px;background:${p.color};color:#fff;text-align:center;margin-right:6px;font-size:11px">${p.label}</span>
+            ${p.title}
+          </td>
+          <td style="padding:8px 10px;color:#667085;font-size:11px">${p.desc}</td>
+          <td style="padding:8px 6px;width:60px;text-align:right">
+            <svg width="60" height="14" style="vertical-align:middle"><rect x="0" y="1" width="${60 - i * 8}" height="12" rx="6" fill="${p.color}" opacity="0.25"/></svg>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+  target.parentNode.insertBefore(wrapper, target.nextSibling);
+}
+
+function renderRiskMatrix(decisions, ds) {
+  // Build risk items from decisions
+  const risks = decisions.map((d, i) => {
+    const impactMap = { P0: 'high', P1: 'medium', P2: 'low' };
+    const impact = impactMap[d.priority] || 'low';
+    const prob = d.title.includes('紧急') || d.title.includes('下滑') ? 'high' :
+                 d.title.includes('流失') || d.title.includes('优化') ? 'medium' : 'low';
+    return { ...d, impact, probability: prob };
+  });
+
+  const riskMap = {
+    'high#high': { label: '高风险', color: '#c94a4a', bg: '#fff1f1' },
+    'high#medium': { label: '高风险', color: '#c94a4a', bg: '#fff1f1' },
+    'medium#high': { label: '高风险', color: '#c94a4a', bg: '#fff1f1' },
+    'high#low': { label: '中风险', color: '#d9822b', bg: '#fff7e6' },
+    'medium#medium': { label: '中风险', color: '#d9822b', bg: '#fff7e6' },
+    'low#high': { label: '中风险', color: '#d9822b', bg: '#fff7e6' },
+    'medium#low': { label: '低风险', color: '#16866f', bg: '#eafaf3' },
+    'low#medium': { label: '低风险', color: '#16866f', bg: '#eafaf3' },
+    'low#low': { label: '低风险', color: '#16866f', bg: '#eafaf3' },
+  };
+
+  const highRisks = risks.filter(r => riskMap[`${r.impact}#${r.probability}`]?.label === '高风险');
+  const medRisks = risks.filter(r => riskMap[`${r.impact}#${r.probability}`]?.label === '中风险');
+
+  const existing = document.getElementById('risk-matrix-wrapper');
+  if (existing) existing.remove();
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'risk-matrix-wrapper';
+  wrapper.className = 'chart-card';
+  wrapper.style.marginBottom = '20px';
+  wrapper.innerHTML = `
+    <div class="card-header"><h3>风险矩阵</h3><span class="card-hint">影响程度 × 发生概率 = 风险等级</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>风险项</th><th>优先级</th><th>影响程度</th><th>发生概率</th><th>风险等级</th></tr>
+        </thead>
+        <tbody>
+          ${[...highRisks, ...medRisks].slice(0, 8).map(r => {
+            const key = `${r.impact}#${r.probability}`;
+            const level = riskMap[key] || { label: '低风险', color: '#16866f' };
+            return `
+              <tr>
+                <td>${r.title}</td>
+                <td><span class="tag tag-${(r.priority || 'p2').toLowerCase()}">${r.priority}</span></td>
+                <td>${r.impact === 'high' ? '高' : r.impact === 'medium' ? '中' : '低'}</td>
+                <td>${r.probability === 'high' ? '高' : r.probability === 'medium' ? '中' : '低'}</td>
+                <td><span class="tag" style="background:${level.bg};color:${level.color};border-color:${level.color}">${level.label}</span></td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  const target = document.getElementById('decisionSummary');
+  if (target && target.nextSibling) {
+    target.parentNode.insertBefore(wrapper, target.nextSibling);
+  }
+}
+
+// ========== Fulfillment ==========
+function renderFulfillment() {
+  const fa = _subData['fulfillment_analysis'];
+  if (!fa) {
+    document.getElementById('fulfillKpiGrid').innerHTML =
+      '<div style="padding:20px;text-align:center;color:#999">履约数据加载中...</div>';
+    return;
+  }
+
+  const f = fa.fulfillment || {};
+  const totalOrders = f.total_orders || 0;
+  const avgDelay = f.avg_delay_days || 0;
+  const delayRate = (f.delay_rate || 0) * 100;
+  const onTimeRate = (f.on_time_rate || 0) * 100;
+
+  // KPI Cards
+  document.getElementById('fulfillKpiGrid').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">配送订单数</div>
+      <div class="kpi-value">${fmtNum(totalOrders)}</div>
+      <div class="kpi-sub">已发货/已送达订单</div>
+    </div>
+    <div class="kpi-card ${avgDelay > 1 ? 'accent-red' : 'accent-green'}">
+      <div class="kpi-label">平均延迟</div>
+      <div class="kpi-value">${avgDelay.toFixed(1)} 天</div>
+      <div class="kpi-sub">${avgDelay > 1 ? '延迟偏高' : '配送良好'}</div>
+    </div>
+    <div class="kpi-card ${delayRate > 20 ? 'accent-red' : 'accent-teal'}">
+      <div class="kpi-label">按时送达率</div>
+      <div class="kpi-value">${onTimeRate.toFixed(1)}%</div>
+      <div class="kpi-sub">延迟率 ${delayRate.toFixed(1)}%</div>
+    </div>
+    <div class="kpi-card accent-purple">
+      <div class="kpi-label">商品评价数</div>
+      <div class="kpi-value">${fmtNum(fa.total_reviews || 0)}</div>
+      <div class="kpi-sub">来自 fact_product_review</div>
+    </div>
+  `;
+
+  // Refund reasons chart
+  const refundReasons = fa.refund_reasons || [];
+  if (refundReasons.length > 0) {
+    renderChart('chart-refund-reasons', {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      grid: { left: 80, right: 40, top: 30, bottom: 60 },
+      xAxis: {
+        type: 'category',
+        data: refundReasons.map(r => r.reason),
+        axisLabel: { rotate: 25, fontSize: 11 }
+      },
+      yAxis: { type: 'value', name: '退款笔数' },
+      series: [{
+        type: 'bar',
+        data: refundReasons.map(r => ({
+          value: r.count,
+          itemStyle: { color: '#c94a4a' }
+        })),
+        barMaxWidth: 40,
+        label: { show: true, position: 'top', fontSize: 11, formatter: c => fmtNum(c.value) }
+      }]
+    });
+  }
+
+  // Review rating distribution chart
+  const reviews = fa.reviews || [];
+  if (reviews.length > 0) {
+    const ratingData = [];
+    for (let r = 1; r <= 5; r++) {
+      const found = reviews.find(item => item.rating === r);
+      ratingData.push({ rating: r, count: found ? found.count : 0 });
+    }
+    const colors = ['#c94a4a', '#d9822b', '#f0c040', '#a0c860', '#2ecc71'];
+    renderChart('chart-review-rating', {
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      grid: { left: 60, right: 30, top: 30, bottom: 40 },
+      xAxis: {
+        type: 'category',
+        data: ratingData.map(d => d.rating + '星'),
+        axisLabel: { fontSize: 12 }
+      },
+      yAxis: { type: 'value', name: '评价数' },
+      series: [{
+        type: 'bar',
+        data: ratingData.map((d, i) => ({
+          value: d.count,
+          itemStyle: { color: colors[i] }
+        })),
+        barMaxWidth: 52,
+        label: { show: true, position: 'top', fontSize: 12, formatter: c => fmtNum(c.value) }
+      }]
+    });
+  }
+
+  // Top refund products table
+  const topRefund = fa.top_refund_products || [];
+  document.getElementById('topRefundTable').innerHTML = topRefund.length > 0 ? `
+    <table>
+      <thead>
+        <tr><th>SKU ID</th><th>商品名称</th><th>品类</th><th>订单数</th><th>退款数</th><th>退款率</th></tr>
+      </thead>
+      <tbody>
+        ${topRefund.map((p, i) => {
+          const rate = (p.refund_rate * 100).toFixed(1);
+          const high = parseFloat(rate) > 20;
+          return `
+            <tr>
+              <td><code>${p.sku_id}</code></td>
+              <td>${p.product_name}</td>
+              <td>${p.category}</td>
+              <td>${fmtNum(p.order_count)}</td>
+              <td>${fmtNum(p.refund_count)}</td>
+              <td class="${high ? 'negative' : ''}">${rate}%${high ? ' ▲' : ''}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  ` : '<div style="padding:20px;text-align:center;color:#999">暂无高退款率商品数据</div>';
+
+  // Top low rated products table
+  const topLowRated = fa.top_low_rated || [];
+  document.getElementById('topLowRatedTable').innerHTML = topLowRated.length > 0 ? `
+    <table>
+      <thead>
+        <tr><th>SKU ID</th><th>商品名称</th><th>品类</th><th>评价数</th><th>平均评分</th></tr>
+      </thead>
+      <tbody>
+        ${topLowRated.map(p => {
+          const low = p.avg_rating < 3;
+          return `
+            <tr>
+              <td><code>${p.sku_id}</code></td>
+              <td>${p.product_name}</td>
+              <td>${p.category}</td>
+              <td>${fmtNum(p.review_count)}</td>
+              <td class="${low ? 'negative' : ''}">${p.avg_rating.toFixed(1)}${low ? ' ▼' : ''}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  ` : '<div style="padding:20px;text-align:center;color:#999">暂无低评分商品数据</div>';
+
+  renderInsights('fulfillInsights', fa.insights || []);
+
+  // CSV export buttons
+  addExportBtn('topRefundTable', () =>
+    (fa.top_refund_products || []).map(p => ({
+      SKU_ID: p.sku_id,
+      商品名称: p.product_name,
+      品类: p.category,
+      订单数: p.order_count,
+      退款数: p.refund_count,
+      退款率: (p.refund_rate * 100).toFixed(1) + '%'
+    })),
+    'top_refund_products.csv'
+  );
+  addExportBtn('topLowRatedTable', () =>
+    (fa.top_low_rated || []).map(p => ({
+      SKU_ID: p.sku_id,
+      商品名称: p.product_name,
+      品类: p.category,
+      评价数: p.review_count,
+      平均评分: p.avg_rating
+    })),
+    'top_low_rated_products.csv'
+  );
+}
+
 // ========== Config ==========
 function renderConfig() {
   document.getElementById('configBaseUrl').textContent = window.location.origin;
@@ -713,6 +1328,7 @@ function renderConfig() {
     { id: 'sales_forecast', name: '销售预测与库存备货' },
     { id: 'marketing_attribution', name: '营销归因与预算建议' },
     { id: 'decision_board', name: '综合决策板' },
+    { id: 'fulfillment_analysis', name: '履约售后分析' },
   ];
 
   const loaded = _allData ? true : false;
@@ -1083,16 +1699,6 @@ function renderChart(id, option) {
   }
 }
 
-function renderAssocAxisLabels() {
-  const dom = document.getElementById('chart-assoc-matrix');
-  if (!dom) return;
-  dom.querySelectorAll('.assoc-axis-label').forEach(el => el.remove());
-  dom.insertAdjacentHTML('beforeend', `
-    <span class="assoc-axis-label assoc-axis-label-y">置信度</span>
-    <span class="assoc-axis-label assoc-axis-label-x">支持度</span>
-  `);
-}
-
 function renderInsights(id, items) {
   const dom = document.getElementById(id);
   if (!dom) return;
@@ -1129,4 +1735,156 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ========== CSV Export ==========
+function downloadCSV(rows, filename) {
+  if (!rows || rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(','),
+    ...rows.map(row =>
+      headers.map(h => {
+        const v = row[h];
+        if (v == null) return '';
+        const s = String(v);
+        return s.includes(',') || s.includes('"') || s.includes('\n')
+          ? '"' + s.replace(/"/g, '""') + '"'
+          : s;
+      }).join(',')
+    ),
+  ].join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function addExportBtn(containerId, getRowsFn, filename) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const header = el.parentElement?.querySelector('.card-header');
+  if (!header) return;
+  header.querySelector('.btn-export')?.remove();
+  const btn = document.createElement('button');
+  btn.className = 'btn-export';
+  btn.innerHTML = '&#x21E9; CSV';
+  btn.title = '导出为CSV文件';
+  btn.addEventListener('click', () => {
+    const rows = getRowsFn();
+    downloadCSV(rows, filename || 'export.csv');
+  });
+  const actions = header.querySelector('.card-header-actions');
+  if (actions) {
+    actions.appendChild(btn);
+  } else {
+    const wrap = document.createElement('div');
+    wrap.className = 'card-header-actions';
+    // Move existing hint into actions
+    const hint = header.querySelector('.card-hint');
+    if (hint) wrap.appendChild(hint);
+    wrap.appendChild(btn);
+    header.appendChild(wrap);
+  }
+}
+
+// ========== Overview Filters ==========
+function populateOverviewFilters() {
+  if (!_allData) return;
+  const { channel_breakdown, monthly_trend } = _allData;
+
+  // Channel filter
+  const chSelect = document.getElementById('channelFilter');
+  if (chSelect && channel_breakdown?.length) {
+    const existing = new Set(Array.from(chSelect.options).map(o => o.value));
+    channel_breakdown.forEach(c => {
+      if (!existing.has(c.channel)) {
+        const opt = document.createElement('option');
+        opt.value = c.channel;
+        opt.textContent = c.channel;
+        chSelect.appendChild(opt);
+      }
+    });
+  }
+
+  // Month filter
+  const mSelect = document.getElementById('monthFilter');
+  if (mSelect && monthly_trend?.length) {
+    const existing = new Set(Array.from(mSelect.options).map(o => o.value));
+    monthly_trend.forEach(m => {
+      if (!existing.has(m.month)) {
+        const opt = document.createElement('option');
+        opt.value = m.month;
+        opt.textContent = m.month;
+        mSelect.appendChild(opt);
+      }
+    });
+  }
+}
+
+function applyOverviewFilter() {
+  if (!_allData) return;
+  const channel = document.getElementById('channelFilter')?.value || '';
+  const month = document.getElementById('monthFilter')?.value || '';
+
+  // Filter channel pie data
+  const origChannels = _allData.channel_breakdown || [];
+  const filteredChannels = channel
+    ? origChannels.filter(c => c.channel === channel)
+    : origChannels;
+
+  if (filteredChannels.length > 0) {
+    renderChart('chart-channel-pie', {
+      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+      series: [{
+        type: 'pie', radius: ['45%', '75%'], center: ['50%', '50%'],
+        data: filteredChannels.map(c => ({ name: c.channel, value: c.gmv })),
+        label: { formatter: '{b}\n{d}%' },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
+      }],
+    });
+  }
+
+  // Filter monthly trend
+  const origTrend = _allData.monthly_trend || [];
+  const filteredTrend = month
+    ? origTrend.filter(m => m.month === month)
+    : origTrend;
+
+  if (filteredTrend.length > 0) {
+    renderChart('chart-monthly-trend', {
+      tooltip: { trigger: 'axis' },
+      xAxis: { type: 'category', data: filteredTrend.map(m => m.month) },
+      yAxis: { type: 'value', axisLabel: { formatter: fmtShort } },
+      series: [
+        { name: 'GMV', type: 'line', data: filteredTrend.map(m => m.gmv), smooth: true, areaStyle: { opacity: 0.15 }, itemStyle: { color: '#4facfe' } },
+        { name: '订单数', type: 'line', data: filteredTrend.map(m => m.orders), smooth: true, itemStyle: { color: '#2ecc71' } },
+      ],
+      legend: { data: ['GMV', '订单数'], bottom: 0 },
+      grid: { top: 20, right: 20, bottom: 40, left: 60 },
+    });
+  }
+
+  // Wire export button for overview
+  const btnExport = document.getElementById('btnExportOverview');
+  if (btnExport) {
+    btnExport.onclick = () => {
+      const trend = filteredTrend;
+      const { kpi } = _allData;
+      const rows = [
+        { metric: 'GMV', value: kpi?.gmv || 0 },
+        { metric: '订单数', value: kpi?.orders || 0 },
+        { metric: '买家数', value: kpi?.buyers || 0 },
+        { metric: '客单价', value: kpi?.aov || 0 },
+        { metric: '退款率', value: ((kpi?.refund_rate || 0) * 100).toFixed(2) + '%' },
+        ...trend.map(m => ({ month: m.month, GMV: m.gmv, 订单数: m.orders })),
+      ];
+      downloadCSV(rows, 'overview_export.csv');
+    };
+  }
 }

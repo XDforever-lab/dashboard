@@ -50,6 +50,22 @@ def run():
 
     next_7d_gmv = [round(mean_gmv, 2) for _ in range(7)]
 
+    # Linear trend projection for 7-day forecast
+    if window >= 14:
+        x_vals = list(range(window))
+        x_mean = (window - 1) / 2
+        y_mean = sum(recent_gmv) / window
+        num = sum((x_vals[i] - x_mean) * (recent_gmv[i] - y_mean) for i in range(window))
+        den = sum((x_vals[i] - x_mean) ** 2 for i in range(window))
+        slope = num / den if den > 0 else 0
+        intercept = y_mean - slope * x_mean
+        next_7d_gmv_trend = []
+        for d in range(1, 8):
+            val = intercept + slope * (window - 1 + d)
+            next_7d_gmv_trend.append(round(max(0, val), 2))
+        # Use trend-based forecast
+        next_7d_gmv = next_7d_gmv_trend
+
     z = 1.96
     margin = z * std_gmv
     next_7d_lower = [round(max(0, mean_gmv - margin), 2) for _ in range(7)]
@@ -130,6 +146,57 @@ def run():
         elif all(recent_trend[i] >= recent_trend[i + 1] for i in range(len(recent_trend) - 1)):
             insights.append("最近3天GMV呈下降趋势，需关注是否出现异常波动")
 
+    # Backtesting: compute MAE/MAPE/RMSE on the last 60 days
+    test_start = max(window, n - 60)
+    errors = []
+    for i in range(test_start, n):
+        train = daily_gmv[i - window:i]
+        pred = sum(train) / window
+        actual = daily_gmv[i]
+        errors.append(abs(pred - actual))
+    mae = round(sum(errors) / len(errors), 2) if errors else 0
+
+    ape_errors = []
+    for i in range(test_start, n):
+        train = daily_gmv[i - window:i]
+        pred = sum(train) / window
+        actual = daily_gmv[i]
+        if actual > 0:
+            ape_errors.append(abs((pred - actual) / actual))
+    mape = round(sum(ape_errors) / len(ape_errors) * 100, 2) if ape_errors else 0
+
+    se_errors = [(daily_gmv[i] - sum(daily_gmv[i-window:i])/window) ** 2 for i in range(test_start, n)]
+    rmse = round(math.sqrt(sum(se_errors) / len(se_errors)), 2) if se_errors else 0
+
+    # Monthly trend decomposition (simple: monthly averages vs overall trend)
+    monthly_rows = query("""
+        SELECT
+            strftime('%Y-%m', order_date) AS month,
+            COALESCE(SUM(paid_amount), 0) AS monthly_gmv
+        FROM fact_order
+        WHERE status IN ('paid', 'completed')
+        GROUP BY strftime('%Y-%m', order_date)
+        ORDER BY month
+    """)
+    monthly_decomp = []
+    monthly_values = [float(r["monthly_gmv"] or 0) for r in monthly_rows]
+    if len(monthly_values) >= 3:
+        # Simple moving average as trend
+        trend = []
+        for i in range(len(monthly_values)):
+            if i < 1:
+                trend.append(monthly_values[i])
+            elif i > len(monthly_values) - 2:
+                trend.append(monthly_values[i])
+            else:
+                trend.append(round((monthly_values[i-1] + monthly_values[i] + monthly_values[i+1]) / 3, 2))
+        for i, r in enumerate(monthly_rows):
+            monthly_decomp.append({
+                "month": r["month"],
+                "value": round(monthly_values[i], 2),
+                "trend": round(trend[i], 2)
+            })
+
     return {
         "title": "销售预测与库存备货",
         "description": "最近30天移动平均、标准差、波动系数、安全库存",
@@ -141,9 +208,13 @@ def run():
             "next_7d_gmv": next_7d_gmv,
             "next_7d_lower": next_7d_lower,
             "next_7d_upper": next_7d_upper,
-            "safety_stock_gmv": safety_stock_gmv
+            "safety_stock_gmv": safety_stock_gmv,
+            "mae": mae,
+            "mape": mape,
+            "rmse": rmse
         },
         "top_categories": top_categories,
+        "monthly_decomposition": monthly_decomp,
         "summary": {
             "data_days": n,
             "prediction_horizon": 7

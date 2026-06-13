@@ -126,6 +126,44 @@ def run():
     if not insights:
         insights.append("各项指标表现正常，继续保持")
 
+    # 月度漏斗转化率（用于漏斗诊断页趋势图）
+    monthly_funnel_rows = query("""
+        SELECT
+            strftime('%Y-%m', event_date) AS month,
+            event_type,
+            COUNT(*) AS cnt
+        FROM fact_traffic
+        GROUP BY strftime('%Y-%m', event_date), event_type
+        ORDER BY month
+    """)
+    monthly_funnel = {}
+    for row in monthly_funnel_rows:
+        m = row["month"]
+        if m not in monthly_funnel:
+            monthly_funnel[m] = {}
+        monthly_funnel[m][row["event_type"]] = int(row["cnt"] or 0)
+
+    monthly_funnel_trend = []
+    for m in sorted(monthly_funnel.keys()):
+        fm = monthly_funnel[m]
+        vh = fm.get("view_home", 0)
+        vp = fm.get("view_product", 0)
+        atc = fm.get("add_to_cart", 0)
+        co = fm.get("checkout", 0)
+        ps = fm.get("pay_success", 0)
+        monthly_funnel_trend.append({
+            "month": m,
+            "view_home": vh,
+            "view_product": vp,
+            "add_to_cart": atc,
+            "checkout": co,
+            "pay_success": ps,
+            "vp_rate": round(vp / vh, 4) if vh > 0 else 0,
+            "pc_rate": round(atc / vp, 4) if vp > 0 else 0,
+            "cc_rate": round(co / atc, 4) if atc > 0 else 0,
+            "cp_rate": round(ps / co, 4) if co > 0 else 0
+        })
+
     return {
         "title": "经营健康诊断",
         "description": "描述性统计、月度趋势、渠道拆解、转化漏斗",
@@ -140,5 +178,6 @@ def run():
         "channel_breakdown": channel_breakdown,
         "funnel": funnel,
         "funnel_rates": funnel_rates,
+        "monthly_funnel_trend": monthly_funnel_trend,
         "insights": insights
     }

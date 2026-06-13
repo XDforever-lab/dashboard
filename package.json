@@ -9,7 +9,7 @@
     "dev": "node scripts/dev.mjs",
     "start:mall-api": "npm start --prefix server",
     "start:mall-web": "npm run dev --prefix client",
-    "start:dashboard": "python -m uvicorn app.main:app --app-dir analytics_dashboard --host 127.0.0.1 --port 8000",
+    "start:dashboard": "python -m uvicorn app.main:app --app-dir analytics_dashboard --host 127.0.0.1 --port 9002",
     "test:dashboard": "python analytics_dashboard/tests/smoke_test.py",
     "build:mall-web": "npm run build --prefix client",
     "verify": "npm run build:mall-web"
