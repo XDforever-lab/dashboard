@@ -48,28 +48,60 @@ def run():
 
     cv = std_gmv / mean_gmv if mean_gmv > 0 else 0
 
-    next_7d_gmv = [round(mean_gmv, 2) for _ in range(7)]
+    next_7d_gmv = [round(mean_gmv, 4) for _ in range(7)]
 
     # Linear trend projection for 7-day forecast
+    slope = 0.0
+    intercept = mean_gmv
     if window >= 14:
         x_vals = list(range(window))
         x_mean = (window - 1) / 2
         y_mean = sum(recent_gmv) / window
         num = sum((x_vals[i] - x_mean) * (recent_gmv[i] - y_mean) for i in range(window))
         den = sum((x_vals[i] - x_mean) ** 2 for i in range(window))
-        slope = num / den if den > 0 else 0
+        slope = round(num / den, 4) if den > 0 else 0.0
         intercept = y_mean - slope * x_mean
         next_7d_gmv_trend = []
         for d in range(1, 8):
             val = intercept + slope * (window - 1 + d)
-            next_7d_gmv_trend.append(round(max(0, val), 2))
-        # Use trend-based forecast
+            next_7d_gmv_trend.append(round(max(0, val), 4))
         next_7d_gmv = next_7d_gmv_trend
+
+    # 30-day forecast (same linear trend, extended)
+    next_30d_gmv = []
+    monthly_forecast = {}
+    if slope != 0 or window >= 14:
+        for d in range(1, 31):
+            val = intercept + slope * (window - 1 + d)
+            next_30d_gmv.append(round(max(0, val), 4))
+        # Group by week for chart display
+        weekly_forecast = []
+        for w in range(0, 30, 7):
+            chunk = next_30d_gmv[w:w+7]
+            weekly_forecast.append(round(sum(chunk) / len(chunk), 4))
+        monthly_forecast = {
+            "daily": next_30d_gmv,
+            "weekly_avg": weekly_forecast
+        }
+    else:
+        next_30d_gmv = [round(mean_gmv, 4) for _ in range(30)]
+        monthly_forecast = {
+            "daily": next_30d_gmv,
+            "weekly_avg": [round(mean_gmv, 4) for _ in range(5)]
+        }
 
     z = 1.96
     margin = z * std_gmv
     next_7d_lower = [round(max(0, mean_gmv - margin), 2) for _ in range(7)]
     next_7d_upper = [round(mean_gmv + margin, 2) for _ in range(7)]
+
+    # Trend direction for display
+    if slope > 1:
+        trend_direction = "up"
+    elif slope < -1:
+        trend_direction = "down"
+    else:
+        trend_direction = "flat"
 
     safety_stock_gmv = round(mean_gmv * 1.5 * cv, 2)
 
@@ -205,9 +237,12 @@ def run():
             "daily_avg_gmv": round(mean_gmv, 2),
             "daily_std_gmv": round(std_gmv, 2),
             "cv": round(cv, 4),
+            "daily_trend_slope": slope,
+            "trend_direction": trend_direction,
             "next_7d_gmv": next_7d_gmv,
             "next_7d_lower": next_7d_lower,
             "next_7d_upper": next_7d_upper,
+            "next_30d": monthly_forecast,
             "safety_stock_gmv": safety_stock_gmv,
             "mae": mae,
             "mape": mape,
@@ -217,7 +252,7 @@ def run():
         "monthly_decomposition": monthly_decomp,
         "summary": {
             "data_days": n,
-            "prediction_horizon": 7
+            "prediction_horizon": 30
         },
         "insights": insights
     }

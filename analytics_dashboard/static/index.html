@@ -118,9 +118,9 @@
           <option value="">全部渠道</option>
         </select>
         <label style="font-size:13px;color:var(--muted);white-space:nowrap;margin-left:8px">时间范围</label>
-        <select id="monthFilter" style="padding:6px 10px;border:1px solid #e0dbd4;border-radius:6px;font-size:13px;color:var(--text);background:var(--panel);cursor:pointer" onchange="applyOverviewFilter()">
-          <option value="">全部月份</option>
-        </select>
+        <input type="date" id="dateStart" style="padding:6px 10px;border:1px solid #e0dbd4;border-radius:6px;font-size:13px;color:var(--text);background:var(--panel);width:140px" onchange="applyOverviewFilter()">
+        <span style="font-size:13px;color:var(--muted)">至</span>
+        <input type="date" id="dateEnd" style="padding:6px 10px;border:1px solid #e0dbd4;border-radius:6px;font-size:13px;color:var(--text);background:var(--panel);width:140px" onchange="applyOverviewFilter()">
         <button class="btn btn-sm btn-outline" id="btnExportOverview" title="导出当前视图数据为CSV">↓ CSV</button>
       </div>
       <div class="kpi-grid" id="kpiGrid"></div>

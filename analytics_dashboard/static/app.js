@@ -816,7 +816,7 @@ function renderForecast() {
     <div class="kpi-card">
       <div class="kpi-label">日均 GMV</div>
       <div class="kpi-value">${fmtMoney(fc.daily_avg_gmv || 0)}</div>
-      <div class="kpi-sub">预测方法: ${sf?.method === 'moving_average_30d' ? '30天移动平均+线性趋势' : sf?.method || '移动平均'}</div>
+      <div class="kpi-sub">趋势: ${fc.trend_direction === 'up' ? '↑ 上升' : fc.trend_direction === 'down' ? '↓ 下降' : '→ 平稳'} (斜率 ${(fc.daily_trend_slope || 0).toFixed(2)})</div>
     </div>
     <div class="kpi-card accent-orange">
       <div class="kpi-label">日波动 (CV)</div>
@@ -850,6 +850,41 @@ function renderForecast() {
         { name: '上限', type: 'line', data: upper, lineStyle: { type: 'dashed', color: '#bbb' }, itemStyle: { color: '#bbb' }, symbol: 'none', areaStyle: { opacity: 0.08, color: '#bbb' } },
       ],
       legend: { data: ['预测 GMV', '下限', '上限'], bottom: 0 },
+      grid: { top: 20, right: 20, bottom: 40, left: 60 },
+    });
+  }
+
+  // 30-day forecast chart
+  const next30daily = fc.next_30d?.daily || [];
+  if (next30daily.length > 0) {
+    const days30 = Array.from({ length: 30 }, (_, i) => `D+${i + 1}`);
+    const chartRow = document.querySelector('#page-forecast .chart-row');
+    const existing30d = document.getElementById('chart-forecast-30d-wrap');
+    if (existing30d) existing30d.remove();
+    const wrap30d = document.createElement('div');
+    wrap30d.className = 'chart-card';
+    wrap30d.id = 'chart-forecast-30d-wrap';
+    wrap30d.style.marginTop = '16px';
+    // Insert after chart-row (which contains the 7-day chart)
+   // Insert after chart-row (which contains the 7-day chart)
+    if (chartRow) {
+    chartRow.insertAdjacentElement('afterend', wrap30d);  
+    }
+    wrap30d.innerHTML = `
+      <div class="card-header"><h3>未来 30 天 GMV 预测</h3><span class="card-hint">每日预测值，线性趋势外推</span></div>
+      <div class="chart-body chart-body-lg" id="chart-forecast-30d"></div>
+    `;
+    // Show every 3rd label to avoid crowding
+    const xLabels30 = days30.map((d, i) => (i % 3 === 0 ? d : ''));
+    renderChart('chart-forecast-30d', {
+      tooltip: { trigger: 'axis' },
+      xAxis: { type: 'category', data: xLabels30, axisLabel: { interval: 0, rotate: 0, fontSize: 10 }, axisTick: { alignWithLabel: true } },
+      yAxis: { type: 'value', scale: true, axisLabel: { formatter: fmtShort } },
+      series: [
+        { name: '预测 GMV', type: 'line', data: next30daily, itemStyle: { color: '#4facfe' }, areaStyle: { opacity: 0.1, color: '#4facfe' }, symbol: 'none', smooth: false },
+        { name: '30 日均值', type: 'line', data: Array(30).fill(fc.daily_avg_gmv), lineStyle: { type: 'dashed', color: '#f39c12', width: 1.5 }, itemStyle: { color: '#f39c12' }, symbol: 'none' },
+      ],
+      legend: { data: ['预测 GMV', '30 日均值'], bottom: 0 },
       grid: { top: 20, right: 20, bottom: 40, left: 60 },
     });
   }
@@ -1450,9 +1485,8 @@ function generateAIAnswer(q) {
       <p>详细建议请查看「综合诊断」页面。</p>`;
   }
 
-  return `<p>关于「${q}」，以下是我基于当前数据的分析：</p>
-    <p>当前平台 GMV 为 <strong>${fmtMoney(gmv)} 元</strong>，共 ${fmtNum(orders)} 笔订单，客单价 ${fmtMoney(aov)} 元，退款率 ${refundRate.toFixed(2)}%。</p>
-    <p>建议您查看对应的分析模块获取更详细的信息。您也可以继续问我关于健康度、漏斗、用户分群或决策建议的问题。</p>`;
+    return `<p>本系统暂未接入大模型 API，无法使用 AI 分析助手功能。</p>
+    <p>请使用上方预设问题查看数据，或输入含关键词的问题（如"健康度""漏斗""用户""决策"）。</p>`;
 }
 
 // ========== Helpers ==========
@@ -1812,25 +1846,31 @@ function populateOverviewFilters() {
     });
   }
 
-  // Month filter
-  const mSelect = document.getElementById('monthFilter');
-  if (mSelect && monthly_trend?.length) {
-    const existing = new Set(Array.from(mSelect.options).map(o => o.value));
-    monthly_trend.forEach(m => {
-      if (!existing.has(m.month)) {
-        const opt = document.createElement('option');
-        opt.value = m.month;
-        opt.textContent = m.month;
-        mSelect.appendChild(opt);
-      }
-    });
+  // Date range inputs
+  if (monthly_trend?.length) {
+    const months = monthly_trend.map(m => m.month).sort();
+    const firstMonth = months[0];
+    const lastMonth = months[months.length - 1];
+    const dateStart = document.getElementById('dateStart');
+    const dateEnd = document.getElementById('dateEnd');
+    if (dateStart) {
+      dateStart.min = firstMonth + '-01';
+      dateStart.max = lastMonth + '-01';
+      if (!dateStart.value) dateStart.value = firstMonth + '-01';
+    }
+    if (dateEnd) {
+      dateEnd.min = firstMonth + '-01';
+      dateEnd.max = lastMonth + '-01';
+      if (!dateEnd.value) dateEnd.value = lastMonth + '-01';
+    }
   }
 }
 
 function applyOverviewFilter() {
   if (!_allData) return;
   const channel = document.getElementById('channelFilter')?.value || '';
-  const month = document.getElementById('monthFilter')?.value || '';
+  const dateStart = document.getElementById('dateStart')?.value || '';
+  const dateEnd = document.getElementById('dateEnd')?.value || '';
 
   // Filter channel pie data
   const origChannels = _allData.channel_breakdown || [];
@@ -1850,23 +1890,29 @@ function applyOverviewFilter() {
     });
   }
 
-  // Filter monthly trend
+  // Filter monthly trend by date range
   const origTrend = _allData.monthly_trend || [];
-  const filteredTrend = month
-    ? origTrend.filter(m => m.month === month)
-    : origTrend;
+  const filteredTrend = origTrend.filter(m => {
+    const monthDate = m.month + '-01';
+    if (dateStart && monthDate < dateStart) return false;
+    if (dateEnd && monthDate > dateEnd) return false;
+    return true;
+  });
 
   if (filteredTrend.length > 0) {
     renderChart('chart-monthly-trend', {
       tooltip: { trigger: 'axis' },
       xAxis: { type: 'category', data: filteredTrend.map(m => m.month) },
-      yAxis: { type: 'value', axisLabel: { formatter: fmtShort } },
+      yAxis: [
+        { type: 'value', name: 'GMV (元)', axisLabel: { formatter: fmtShort }, nameTextStyle: { fontSize: 11 } },
+        { type: 'value', name: '订单数', axisLabel: { formatter: fmtShort }, nameTextStyle: { fontSize: 11 } }
+      ],
       series: [
-        { name: 'GMV', type: 'line', data: filteredTrend.map(m => m.gmv), smooth: true, areaStyle: { opacity: 0.15 }, itemStyle: { color: '#4facfe' } },
-        { name: '订单数', type: 'line', data: filteredTrend.map(m => m.orders), smooth: true, itemStyle: { color: '#2ecc71' } },
+        { name: 'GMV', type: 'line', yAxisIndex: 0, data: filteredTrend.map(m => m.gmv), smooth: true, areaStyle: { opacity: 0.15 }, itemStyle: { color: '#4facfe' } },
+        { name: '订单数', type: 'line', yAxisIndex: 1, data: filteredTrend.map(m => m.orders), smooth: true, itemStyle: { color: '#2ecc71' } },
       ],
       legend: { data: ['GMV', '订单数'], bottom: 0 },
-      grid: { top: 20, right: 20, bottom: 40, left: 60 },
+      grid: { top: 30, right: 60, bottom: 40, left: 60 },
     });
   }
 

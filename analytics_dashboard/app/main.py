@@ -1,3 +1,6 @@
+from dotenv import load_dotenv          # ← 这行必须有
+from pathlib import Path
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from fastapi import Body, FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -5,8 +8,8 @@ import html
 import json
 import time
 import os
-import urllib.error
-import urllib.request
+import requests
+from requests.exceptions import RequestException
 
 from app.data_access import get_db_path
 from app.subprojects.business_health import run as run_business_health
@@ -30,6 +33,7 @@ AI_MODEL_ENDPOINT = os.environ.get("DASHBOARD_AI_ENDPOINT", "").strip()
 AI_MODEL_KEY = os.environ.get("DASHBOARD_AI_API_KEY", "").strip()
 AI_MODEL_NAME = os.environ.get("DASHBOARD_AI_MODEL", "dashboard-local-analyst").strip()
 
+print(f"[AI] ENDPOINT={AI_MODEL_ENDPOINT!r}, KEY={'***' if AI_MODEL_KEY else 'EMPTY'}, MODEL={AI_MODEL_NAME!r}")
 
 def _get_all_results(force=False):
     global _cache, _cache_time
@@ -298,19 +302,20 @@ def _call_external_model(question, context):
         headers["Authorization"] = f"Bearer {AI_MODEL_KEY}"
 
     try:
-        req = urllib.request.Request(
+        resp = requests.post(
             AI_MODEL_ENDPOINT,
-            data=json.dumps(payload).encode("utf-8"),
+            json=payload,
             headers=headers,
-            method="POST"
+            timeout=20
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        resp.raise_for_status()
+        data = resp.json()
         choices = data.get("choices") or []
         if choices:
-            message = choices[0].get("message") or {}
+            message = choices[0].get("message") or choices[0].get("delta") or {}
             return message.get("content") or choices[0].get("text")
-    except (urllib.error.URLError, TimeoutError, ValueError, KeyError):
+    except RequestException as e:
+        print(f"[AI] External model call failed: {type(e).__name__}: {e}")
         return None
     return None
 

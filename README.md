@@ -1,201 +1,276 @@
-# EShop Intelligence — 经营分析与数据挖掘系统
+# EShop Intelligence Dashboard — 电商数据挖掘与商业决策平台
 
-IT 项目管理课程实践项目。围绕模拟电商数据集，构建涵盖经营诊断、客户分群、关联规则、销售预测、营销归因等模块的数据分析仪表盘。
+---
 
-## 项目概览
+## 📊 项目简介
+
+本项目是一个完整的 **模拟电商经营分析平台**，包含：
+
+- 🛒 **模拟电商商城**（React 前端 + Express 后端）：支持用户注册、浏览商品、加购、下单、支付等完整购物流程
+- 📈 **智能分析仪表盘**（FastAPI + ECharts）：9 个数据挖掘子项目，覆盖经营健康度、客户分群、销售预测、营销归因等
+- 🤖 **AI 分析助手**：支持接入 OpenAI 兼容大模型 API，基于实时数据生成动态分析建议
+
+所有数据均为模拟生成（2024-04 ~ 2026-03，默认 20000 用户），可复现，无隐私风险。
+
+---
+
+## 🏗️ 架构概览
 
 ```
-┌─────────────┐    ┌──────────────────────────────────────────┐
-│  mall-api   │    │    analytics_dashboard                    │
-│  (Express)  │    │    (FastAPI + ECharts)                     │
-│   :38173    │◀───│    :9002                                   │
-│             │    │                                            │
-│   SQLite    │    │  ┌─ 经营总览（双Y轴趋势 + 渠道筛选 + CSV）  │
-│   数据库     │    │  ├─ 数据概览（ETL 事实表/维度表分布）       │
-│  ~108K 订单  │    │  ├─ 漏斗诊断（5 层转化 + 流失定位）        │
-│  ~1M 事件    │    │  ├─ 客户分析（Cohort 热力图 + RFM 分群）    │
-│  ~20K 用户   │    │  ├─ 商品与购物车（关联规则矩阵 + 明细表）   │
-│             │    │  ├─ 预测与库存（7 天 GMV 趋势外推 + 误差）   │
-│             │    │  ├─ 营销利润（渠道 ROAS 归因）               │
-│             │    │  ├─ 综合诊断（WBS 表格 + 风险矩阵）          │
-│             │    │  ├─ 履约售后（配送/退款/评论分析）            │
-│             │    │  ├─ AI 分析助手                            │
-│             │    │  └─ 系统配置                               │
-└─────────────┘    └──────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        用户 / 学生                                │
+└──────┬───────────────────────────────────────┬───────────────────┘
+       │                                       │
+       ▼                                       ▼
+┌──────────────┐                    ┌──────────────────────┐
+│   client/    │  Vite Dev Server   │ analytics_dashboard/ │
+│  React 商城   │  :39174            │ FastAPI 分析仪表盘    │
+│  (购物/下单)  │                    │  :9002               │
+└──────┬───────┘                    └──────────┬───────────┘
+       │  /api 代理                            │ 只读 SQLite
+       ▼                                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                      server/  Express API  :38173                 │
+│                    (读写)  eshop.sqlite 数据库                     │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-| 组件 | 技术栈 | 说明 |
-|---|---|---|
-| **商城后端** | Node.js + Express + SQLite | 商品/订单/用户 API，ETL 只读数据接口 |
-| **商城前端** | React + Vite | 商城页面（开发模式） |
-| **分析仪表盘** | Python + FastAPI | 数据挖掘子项目聚合 API + 可视化看板 |
-| **前端页面** | HTML + ECharts + CSS | 11 功能模块仪表盘（含CSV导出、筛选器、加载进度提示） |
+---
 
-## 数据说明
 
-数据为合成模拟数据，由 `server/src/seed.js` 使用固定随机种子 `20260427` 生成，确保每次生成完全一致。
 
-数据层通过 **16 个 SQLite VIEW** 将源表映射到分析视图（如 `orders` → `fact_order`），保证后端查询名称一致，详见 `server/src/db.js` 和 `migrate_views.py`。
+## 🚀 快速开始
 
-| 数据类型 | 规模 | 时间范围 |
-|---|---|---|
-| 用户 | 20,000 人 | — |
-| 商品 | 12 类目 / 864 SKU | — |
-| 订单 | ~108,000 单 | 2024-04 ~ 2026-04 |
-| 行为事件 | ~1,000,000 条 | 含转化与流失流量 |
-| 营销活动 | 56 个 | 24 个月 |
+### 前置要求
 
-详细数据字典见 [docs/data-dictionary.md](docs/data-dictionary.md)。
+| 依赖      | 版本      |
+| ------- | ------- |
+| Node.js | >= 18   |
+| Python  | >= 3.10 |
+| npm     | >= 9    |
 
-## 快速开始
+### 一键启动
 
 ```bash
 # 1. 安装所有依赖
 npm run install:all
 
+# 3.生成模拟数据（首次运行）
+cd ../server
+npm run seed
+
 # 2. 一键启动（mall-api + 商城前端 + 仪表盘）
 npm run dev
 ```
 
-访问地址：
+启动后访问：
+
+| 服务          | 地址                     | 说明          |
+| ----------- | ---------------------- | ----------- |
+| React 商城    | http://localhost:39174 | 模拟用户购物      |
+| 分析仪表盘       | http://localhost:9002  | 数据分析与决策     |
+| Express API | http://localhost:38173 | 后端 REST API |
+
+---
+
+## 📁 目录结构
 
 ```
-仪表盘：http://127.0.0.1:9002
-商城 API：http://127.0.0.1:38173/api/health
-商城前端：http://127.0.0.1:39174
-```
-
-## 仅启动仪表盘
-
-```powershell
-cd eshop-dashboard-practice
-
-# 首次安装依赖
-pip install -r analytics_dashboard/requirements.txt
-
-# 启动（统一使用 9002 端口）
-python -m uvicorn app.main:app --app-dir analytics_dashboard --host 127.0.0.1 --port 9002
-```
-
-打开 `http://127.0.0.1:9002`。首次加载约需 3-5 分钟（后端需运行 8 个子项目分析运算），加载遮罩会显示进度条和方法论提示。
-
-## 仪表盘功能模块
-
-| 模块 | 数据来源 | 说明 |
-|---|---|---|
-| **经营总览** | business_health | KPI 卡、月度 GMV 双 Y 轴趋势图、渠道饼图、漏斗预览；支持渠道/月份筛选器 + CSV 导出 |
-| **数据概览** | ETL 元数据 | 数据表规模分布（事实表+维度表分类）、总记录数、SKU 数、数据版本与时间范围 |
-| **漏斗诊断** | business_health | 5 层转化漏斗、各阶段流失定位、月度转化率趋势折线图 |
-| **客户分析** | RFM + 聚类 + 复购预测 | RFM 分群饼图、聚类柱状图、Cohort 留存热力图、高潜复购用户排名、综合评分模型指标 |
-| **商品与购物车** | 关联规则 | 提升度矩阵散点图、Top 关联规则明细表（含支持度%和共现次数）、CSV 导出 |
-| **预测与库存** | 销售预测 | 7 天 GMV 趋势外推预测（线性回归）、月度 GMV 趋势分解、MAE/MAPE/RMSE 回测指标 |
-| **营销利润** | 营销归因 | 渠道 ROAS 柱状图、效率明细表（含 CSV 导出）、预算调整建议 |
-| **综合诊断** | 决策板 | 健康度评分、WBS 项目阶段表格（V1-V6）、风险矩阵、P0/P1/P2 决策列表 |
-| **履约售后** | fulfillment_analysis | 配送延迟率 KPI、退款原因分布、评论评分分布、高退款/低评分商品 TOP10 |
-| **AI 分析助手** | 全部子项目 | 基于规则的自然语言问答 |
-| **系统配置** | — | 子项目运行状态监测 |
-
-## 数据挖掘子项目
-
-后端 8 个数据分析模块，位于 `analytics_dashboard/app/subprojects/`：
-
-| 子项目 | 算法/方法 | 输出 |
-|---|---|---|
-| `business_health` | SQL 聚合 + 漏斗分析 | KPI、月度趋势、渠道拆解、转化漏斗 |
-| `feature_engineering` | RFM 模型（R×F×M 分桶） | RFM 标签与分群、Cohort 留存矩阵 |
-| `customer_clustering` | K-Means 规则分群 | 5 类客户画像 |
-| `repurchase_prediction` | 加权综合评分模型 | 高潜复购名单、模型阈值/ROI |
-| `association_rules` | Apriori（手工实现） | 支持度/置信度/提升度规则 + 共现次数 |
-| `sales_forecast` | 线性回归趋势外推 | 7 天 GMV 逐日预测 + MAE/MAPE/RMSE 回测 |
-| `marketing_attribution` | ROAS/CPA/归因 | 渠道效率 + 预算建议 |
-| `fulfillment_analysis` | 配送/退款/评价分析 | 配送延迟率、退款原因、评分分布、TOP10 商品 |
-
-## 项目文件结构
-
-```
-eshop-dashboard-practice/
-├── server/                     # 商城后端
+dashboard/
+├── client/                              # 🖥️ React 电商商城（用户购物端）
 │   ├── src/
-│   │   ├── db.js              # SQLite 建库建表（含 16 个分析视图 DDL）
-│   │   ├── seed.js            # 数据种子生成器
-│   │   └── server.js          # Express API 接口
-│   ├── migrate_views.py       # VIEW 映射脚本（源表 → 分析视图）
-│   ├── data/                  # SQLite 数据库文件
+│   │   ├── main.jsx                     # 单文件 React 应用（完整商城逻辑）
+│   │   └── styles.css                   # 全局样式
+│   ├── index.html                       # HTML 入口
+│   ├── vite.config.js                   # Vite 配置，/api 代理到 Express
+│   └── package.json
+│
+├── server/                              # 🔧 Node.js Express API（业务后端）
+│   ├── src/
+│   │   ├── server.js                    # Express 主服务，RESTful API
+│   │   ├── db.js                        # SQLite 连接 + Schema 初始化
+│   │   └── seed.js                      # 模拟数据生成脚本
+│   ├── data/
+│   │   └── eshop.sqlite                 # SQLite 数据库文件
 │   ├── Dockerfile
-│   ├── package.json
-│   └── package-lock.json
-├── client/                     # 商城前端 (React + Vite)
-│   ├── src/
-│   │   ├── main.jsx           # 商城页面（商品/购物车/下单）
-│   │   └── styles.css
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── package.json
-│   └── package-lock.json
-├── analytics_dashboard/        # 分析仪表盘
+│   └── package.json
+│
+├── analytics_dashboard/                 # 📈 Python FastAPI 分析仪表盘
 │   ├── app/
-│   │   ├── main.py            # FastAPI 主应用（路由/缓存/AI分析）
-│   │   ├── data_access.py     # SQLite 只读连接层
-│   │   ├── utils.py            # 工具函数
-│   │   └── subprojects/       # 8 个子项目（每项一个目录）
+│   │   ├── main.py                      # FastAPI 主应用 + AI 分析助手
+│   │   ├── data_access.py               # 只读 SQLite 连接层
+│   │   ├── utils.py                     # 工具函数（格式化、统计、标准化）
+│   │   └── subprojects/                 # 9 个数据分析子项目
+│   │       ├── business_health/         # 经营健康度（KPI、漏斗、趋势）
+│   │       ├── feature_engineering/     # 特征工程（RFM 特征构建）
+│   │       ├── repurchase_prediction/   # 复购预测
+│   │       ├── customer_clustering/     # 客户聚类（用户分群）
+│   │       ├── association_rules/       # 关联规则（购物篮分析）
+│   │       ├── sales_forecast/          # 销售预测（7天/30天 GMV）
+│   │       ├── marketing_attribution/   # 营销归因（渠道 ROAS）
+│   │       ├── fulfillment_analysis/    # 履约与售后分析
+│   │       └── decision_board/          # 综合诊断与决策建议
 │   ├── static/
-│   │   ├── index.html         # 仪表盘页面（11 个 Tab）
-│   │   ├── app.js             # 前端逻辑（ECharts 渲染 + CSV 导出 + 加载进度）
-│   │   ├── styles.css         # 仪表盘样式
-│   │   └── assets/            # 静态资源
+│   │   ├── index.html                   # ECharts 可视化仪表盘前端
+│   │   ├── app.js                       # 仪表盘前端逻辑
+│   │   └── styles.css                   # 仪表盘样式
 │   ├── tests/
-│   │   └── smoke_test.py      # 冒烟测试
+│   │   └── smoke_test.py                # 冒烟测试
+│   ├── .env.example                     # 环境变量模板
 │   ├── Dockerfile
-│   └── requirements.txt
+│   └── requirements.txt                 # Python 依赖
+│
 ├── scripts/
-│   └── dev.mjs                 # 一键启动脚本（端口统一 9002）
-├── docs/                       # 课程文档
-│   ├── course-teaching-syllabus.md
-│   ├── data-dictionary.md
-│   ├── source-to-dataset-mapping.md
-│   ├── student-assignment.md
-│   ├── student-feature-requirements.md
-│   └── ubuntu-docker-compose-guide.md
-├── docker-compose.yml          # Docker 部署（端口 9002）
-├── package.json                # 根级 npm 脚本
+│   └── dev.mjs                          # 一键启动脚本（npm run dev）
+│
+├── package.json                         # 根目录配置 + 启动脚本
 ├── .gitignore
 └── README.md
 ```
 
-## 加载体验
+---
 
-打开仪表盘后，页面会显示全屏加载遮罩，包含：
+## 📊 数据库说明
 
-- **进度条**：从 5% → 100% 分 11 步推进
-- **轮换提示**：CRISP-DM → RFM 分群 → Cohort 留存 → Apriori 关联规则 → 趋势外推 → WBS → 安全库存 → 营销归因 → 数据建模
-- **耗时提示**：底部显示「预计耗时 3-5 分钟，请耐心等待」
-- 加载完成后遮罩自动淡出
+### 表结构（16 张表 + 多个视图）
 
-## 验证与测试
+| 类型       | 表名                                                       | 说明      |
+| -------- | -------------------------------------------------------- | ------- |
+| **维度表**  | `users`                                                  | 用户信息    |
+|          | `categories`                                             | 商品类目    |
+|          | `spu` / `sku`                                            | 商品规格    |
+|          | `campaigns`                                              | 营销活动    |
+|          | `coupons`                                                | 优惠券     |
+|          | `addresses`                                              | 收货地址    |
+| **事实表**  | `orders` / `order_items`                                 | 订单及明细   |
+|          | `carts` / `cart_items`                                   | 购物车     |
+|          | `payments`                                               | 支付记录    |
+|          | `refunds`                                                | 退款记录    |
+|          | `shipments`                                              | 物流发货    |
+|          | `page_events`                                            | 页面行为事件  |
+|          | `inventory_movements`                                    | 库存变动    |
+|          | `product_reviews`                                        | 商品评价    |
+|          | `ads_spend`                                              | 广告花费    |
+|          | `user_coupons`                                           | 用户优惠券   |
+|          | `admin_action_logs`                                      | 管理员操作日志 |
+| **分析视图** | `dim_product` / `dim_user` / `dim_campaign` / `dim_date` | 维度视图    |
+|          | `fact_order` / `fact_traffic`                            | 事实视图    |
+|          | `daily_business_summary`                                 | 日经营汇总   |
+
+### 数据范围
+
+- 时间跨度：2024-04-01 ~ 2026-03-31（约 2 年）
+- 默认用户数：20,000
+- 可配置：`SEED_USERS`、`SEED_SPU_PER_CATEGORY`、`SEED_ABANDONED_SESSIONS`
+
+---
+
+## 📈 9 个数据分析子项目
+
+| #   | 子项目       | 功能                    | 输出                                |
+| --- | --------- | --------------------- | --------------------------------- |
+| 1   | **经营健康度** | KPI 计算、月度趋势、漏斗分析、渠道分解 | 健康评分、增长机会、风险预警                    |
+| 2   | **特征工程**  | RFM 特征构建              | Recency / Frequency / Monetary 分布 |
+| 3   | **复购预测**  | 基于历史行为预测复购概率          | 复购概率分布、高潜用户列表                     |
+| 4   | **客户聚类**  | 用户分群（K-Means）         | 5-7 个用户画像分群                       |
+| 5   | **关联规则**  | 购物篮分析（Apriori）        | 频繁项集、关联规则、提升度                     |
+| 6   | **销售预测**  | 线性回归外推                | 未来 7 天 / 30 天 GMV 预测              |
+| 7   | **营销归因**  | 渠道 ROAS 分析            | 各渠道投入产出比、最优渠道                     |
+| 8   | **履约与售后** | 发货时效、退款率、客诉分析         | 履约健康度、售后风险                        |
+| 9   | **综合诊断**  | 整合所有模块                | Top 3 决策建议、优先级排序                  |
+
+---
+
+## 🤖 AI 分析助手
+
+### 本地模式（默认）
+
+无需配置，开箱即用。基于关键词匹配 + 模板引擎：
+
+| 关键词            | 触发内容          |
+| -------------- | ------------- |
+| 漏斗 / 流失 / 转化   | 各阶段转化率 + 流失定位 |
+| 用户 / 分群 / 运营   | 用户分群画像        |
+| 营销 / ROAS / 渠道 | 渠道投入产出分析      |
+| 建议 / 决策        | Top 3 决策建议    |
+| 其他             | 通用健康摘要        |
+
+### 接入大模型 API
+
+复制 `.env.example` 为 `.env` 并填入你的配置：
 
 ```bash
-npm run verify               # 构建商城前端
-npm run test:dashboard       # 运行仪表盘冒烟测试
+DASHBOARD_AI_ENDPOINT=https://api.deepseek.com/v1/chat/completions
+DASHBOARD_AI_API_KEY=sk-           #你的key填这里
+DASHBOARD_AI_MODEL=deepseek-chat
 ```
 
-## Docker Compose 部署
+**兼容平台**：
+
+| 平台        | ENDPOINT                                                             |
+| --------- | -------------------------------------------------------------------- |
+| OpenAI    | `https://api.openai.com/v1/chat/completions`                         |
+| DeepSeek  | `https://api.deepseek.com/v1/chat/completions`                       |
+| 阿里百炼      | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` |
+| Ollama 本地 | `http://localhost:11434/v1/chat/completions`                         |
+
+---
+
+## 🛠️ 开发指南
+
+### 单独启动各服务
 
 ```bash
-docker compose up --build -d
-docker compose ps
+React 商城
+cd client && npm run dev # http://localhost:39174
+
+Express API
+cd server && npm run dev # http://localhost:38173
+
+分析仪表盘
+cd analytics_dashboard && uvicorn app.main:app --reload --port 9002
 ```
 
-访问 `http://localhost:9002`。
+### 重新生成数据
 
-详细 Ubuntu 部署步骤见 [docs/ubuntu-docker-compose-guide.md](docs/ubuntu-docker-compose-guide.md)。
+```bash
+cd server npm run seed # 清空并重新生成数据
+```
 
-## 课程参考文档
 
-| 文档 | 内容 |
-|---|---|
-| [教学大纲](docs/course-teaching-syllabus.md) | 14 周教学安排与课堂任务 |
-| [数据字典](docs/data-dictionary.md) | 18 张源表 + 16 个分析视图的字段说明 |
-| [ETL 映射](docs/source-to-dataset-mapping.md) | OLTP 源表到分析视图的转换逻辑 |
-| [学生作业](docs/student-assignment.md) | 作业要求与评分建议 |
-| [功能需求](docs/student-feature-requirements.md) | R0-R11 模块功能规格 |
-| [部署指南](docs/ubuntu-docker-compose-guide.md) | Ubuntu 环境 Docker 部署步骤 |
+
+
+### 运行测试
+
+```bash
+cd analytics_dashboard python -m pytest tests/
+```
+
+---
+
+## 🐳 Docker 部署
+
+```bash
+# 构建并启动 Express API
+docker build -t eshop-api server/ docker run -p 38173:38173 eshop-api
+```
+
+```
+# 构建并启动分析仪表盘
+docker build -t eshop-dashboard analytics_dashboard/ docker run -p 9002:9002 eshop-dashboard
+```
+
+---
+
+## 📚 技术栈
+
+| 模块     | 技术                                 |
+| ------ | ---------------------------------- |
+| 前端商城   | React 18 + Vite 5 + 原生 CSS         |
+| 后端 API | Node.js + Express + better-sqlite3 |
+| 分析后端   | Python 3.10+ + FastAPI + Uvicorn   |
+| 可视化    | ECharts 5.5                        |
+| 数据库    | SQLite 3                           |
+| 部署     | Docker                             |
+
+---
