@@ -1,5 +1,4 @@
 from datetime import date, timedelta
-from collections import defaultdict
 
 from ...data_access import query
 from ...utils import safe_divide
@@ -18,56 +17,36 @@ def _min_max_normalize(values, reverse=False):
 
 
 def run():
-    today = date.today()
+    today_str = date.today().isoformat()
+    cutoff1_str = (date.today() - timedelta(days=30)).isoformat()
+    cutoff2_str = (date.today() - timedelta(days=60)).isoformat()
 
-    users = query("SELECT user_id FROM dim_user")
-    user_ids = [u["user_id"] for u in users]
-    total_users = len(user_ids)
-
-    if total_users == 0:
-        return _empty_result()
-
-    orders = query(
-        "SELECT user_id, order_date, paid_amount FROM fact_order "
-        "WHERE status IN ('paid', 'completed') ORDER BY user_id, order_date"
-    )
-
-    user_orders = defaultdict(list)
-    for o in orders:
-        user_orders[o["user_id"]].append(o)
+    # Use SQL to compute all aggregations — avoid pulling raw rows into Python
+    rows = query("""
+        SELECT
+            u.user_id,
+            CAST(julianday(?) - julianday(MAX(o.order_date)) AS INTEGER) AS recency,
+            COUNT(o.order_id) AS frequency,
+            COALESCE(SUM(o.paid_amount), 0) AS monetary,
+            COALESCE(SUM(CASE WHEN o.order_date >= ? THEN 1 ELSE 0 END), 0) AS f_recent,
+            COALESCE(SUM(CASE WHEN o.order_date >= ? AND o.order_date < ? THEN 1 ELSE 0 END), 0) AS f_prev
+        FROM dim_user u
+        LEFT JOIN fact_order o ON o.user_id = u.user_id AND o.status IN ('paid', 'completed')
+        GROUP BY u.user_id
+    """, [today_str, cutoff1_str, cutoff2_str, cutoff1_str])
 
     user_stats = []
-    for uid in user_ids:
-        u_orders = user_orders.get(uid, [])
-        if not u_orders:
+    total_users = len(rows)
+    for r in rows:
+        if r["frequency"] == 0:
             continue
-
-        order_dates = []
-        monetary = 0.0
-        for o in u_orders:
-            od = o["order_date"]
-            if isinstance(od, str):
-                od = date.fromisoformat(od)
-            order_dates.append(od)
-            monetary += o["paid_amount"] or 0.0
-
-        order_dates.sort()
-        last_order_date = order_dates[-1]
-        recency = (today - last_order_date).days
-        frequency = len(u_orders)
-
-        cutoff1 = today - timedelta(days=30)
-        cutoff2 = today - timedelta(days=60)
-        f_recent = sum(1 for d in order_dates if d >= cutoff1)
-        f_prev = sum(1 for d in order_dates if cutoff2 <= d < cutoff1)
-
         user_stats.append({
-            "user_id": uid,
-            "recency": recency,
-            "frequency": frequency,
-            "monetary": monetary,
-            "f_recent": f_recent,
-            "f_prev": f_prev,
+            "user_id": r["user_id"],
+            "recency": int(r["recency"] or 0),
+            "frequency": int(r["frequency"] or 0),
+            "monetary": float(r["monetary"] or 0),
+            "f_recent": int(r["f_recent"] or 0),
+            "f_prev": int(r["f_prev"] or 0),
         })
 
     if not user_stats:

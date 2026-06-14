@@ -144,14 +144,14 @@ async function loadData(forceReload) {
     if (heroUsers) heroUsers.textContent = fmtNum(ov.users || 0);
   }
 
-  // Step 2: Reload (longest step)
+  // Step 2: Reload (longest step — triggers all subproject computation on server)
   if (forceReload) {
     setProgress(10, '正在计算分析结果...', '首次加载需运算所有子项目，请耐心等待');
     await fetch('/api/reload', { method: 'POST' }).catch(() => {});
   }
 
-  // Step 3: Summary
-  setProgress(80, '正在汇总数据...', '获取经营总览');
+  // Step 3: Summary (server-side cached after reload)
+  setProgress(78, '正在汇总数据...', '获取经营总览');
   const data = await API.summary();
   if (data) {
     _allData = data;
@@ -159,28 +159,17 @@ async function loadData(forceReload) {
       `数据更新于 ${data.computed_at || '-'}`;
   }
 
-  // Step 4-10: Load subproject details
-  const subIds = [
-    'customer_clustering', 'feature_engineering', 'repurchase_prediction',
-    'association_rules', 'sales_forecast', 'marketing_attribution',
-    'fulfillment_analysis'
-  ];
-  const subNames = [
-    '客户分群', '用户特征宽表', '复购预测',
-    '关联规则', '销售预测', '营销归因',
-    '履约售后分析'
-  ];
-  for (let i = 0; i < subIds.length; i++) {
-    const pct = 80 + Math.round((i + 1) / subIds.length * 15);
-    setProgress(pct, `正在加载子项目 ${i + 1}/${subIds.length}`, subNames[i]);
-    const sub = await API.subproject(subIds[i]);
-    if (sub) _subData[subIds[i]] = sub;
-  }
+  // Step 4: Lazy-load subproject details — load only overview-essential items now
+  // Remaining subprojects are loaded on demand when user visits the corresponding page
+  setProgress(95, '正在准备...', '预加载核心子项目');
+  await Promise.all([
+    API.subproject('customer_clustering').then(sub => { if (sub) _subData['customer_clustering'] = sub; }),
+    API.subproject('feature_engineering').then(sub => { if (sub) _subData['feature_engineering'] = sub; }),
+    API.subproject('repurchase_prediction').then(sub => { if (sub) _subData['repurchase_prediction'] = sub; }),
+  ]);
 
-  // Step 11: Decision board
-  setProgress(98, '正在生成决策建议...', '综合诊断');
-  const db = await API.decision();
-  if (db) _subData['decision_board'] = db;
+  // Mark that other subprojects aren't loaded yet
+  _subData._loaded = new Set(['customer_clustering', 'feature_engineering', 'repurchase_prediction']);
 
   setProgress(100, '加载完成', '');
   stopTips();
@@ -190,8 +179,15 @@ async function loadData(forceReload) {
 }
 
 // ========== Page Router ==========
-function renderPage(page) {
+async function renderPage(page) {
   if (!_allData) return;
+
+  // Lazy-load subproject data if needed for this page
+  const needed = SUBPROJECT_DEPS[page];
+  if (needed && needed.length > 0) {
+    await ensureSubData(needed);
+  }
+
   switch (page) {
     case 'overview':  renderOverview(); break;
     case 'etl':       renderETL(); break;
@@ -205,6 +201,32 @@ function renderPage(page) {
     case 'ai':        break;
     case 'config':    renderConfig(); break;
   }
+}
+
+// Map of page -> required subproject IDs (lazy-loaded on first visit)
+const SUBPROJECT_DEPS = {
+  customer: ['customer_clustering', 'feature_engineering', 'repurchase_prediction'],
+  product: ['association_rules'],
+  forecast: ['sales_forecast'],
+  marketing: ['marketing_attribution'],
+  decision: ['decision_board'],
+  fulfillment: ['fulfillment_analysis'],
+  config: ['association_rules', 'sales_forecast', 'marketing_attribution', 'fulfillment_analysis', 'decision_board'],
+  ai: ['decision_board', 'customer_clustering', 'repurchase_prediction'],
+};
+
+async function ensureSubData(ids) {
+  const promises = [];
+  for (const id of ids) {
+    if (!_subData._loaded.has(id)) {
+      const isDecision = id === 'decision_board';
+      const p = isDecision ? API.decision() : API.subproject(id);
+      promises.push(p.then(sub => {
+        if (sub) { _subData[id] = sub; _subData._loaded.add(id); }
+      }));
+    }
+  }
+  if (promises.length > 0) await Promise.all(promises);
 }
 
 // ========== ETL Data Overview ==========

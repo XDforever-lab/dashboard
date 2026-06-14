@@ -2,26 +2,20 @@ from ...data_access import query
 
 
 def _quintile_scores(values, ascending=True):
+    """O(n log n) quintile scoring via rank-based bucketing."""
     n = len(values)
     if n == 0:
         return []
-    sorted_vals = sorted(values)
-    scores = []
-    for v in values:
+    # Sort indices by value for O(n log n) ranking
+    sorted_indices = sorted(range(n), key=lambda i: values[i])
+    scores = [0] * n
+    bucket_size = n / 5
+    for rank, idx in enumerate(sorted_indices):
+        bucket = min(int(rank / bucket_size), 4)
         if ascending:
-            pct = sum(1 for x in sorted_vals if x < v) / n
+            scores[idx] = bucket + 1
         else:
-            pct = sum(1 for x in sorted_vals if x > v) / n
-        if pct >= 0.8:
-            scores.append(5)
-        elif pct >= 0.6:
-            scores.append(4)
-        elif pct >= 0.4:
-            scores.append(3)
-        elif pct >= 0.2:
-            scores.append(2)
-        else:
-            scores.append(1)
+            scores[idx] = 5 - bucket
     return scores
 
 

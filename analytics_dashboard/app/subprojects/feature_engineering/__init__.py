@@ -135,9 +135,12 @@ def run():
 
     # Build cohort data structures
     cohort_map = {}
+    uid_to_cohort = {}  # O(1) lookup instead of O(n) inner loop
     for row in user_first:
         cm = row["cohort_month"]
+        uid = row["user_id"]
         cohort_map[cm] = {"users": set(), "months": {}}
+        uid_to_cohort[uid] = cm
     for row in user_first:
         cm = row["cohort_month"]
         uid = row["user_id"]
@@ -146,14 +149,12 @@ def run():
     for row in order_months:
         uid = row["user_id"]
         om = row["order_month"]
-        # Find this user's cohort month
-        for cm_row in user_first:
-            if cm_row["user_id"] == uid:
-                cm = cm_row["cohort_month"]
-                if om not in cohort_map[cm]["months"]:
-                    cohort_map[cm]["months"][om] = set()
-                cohort_map[cm]["months"][om].add(uid)
-                break
+        cm = uid_to_cohort.get(uid)
+        if cm is None:
+            continue
+        if om not in cohort_map[cm]["months"]:
+            cohort_map[cm]["months"][om] = set()
+        cohort_map[cm]["months"][om].add(uid)
 
     # Build matrix: only take latest 12 cohorts, max 12 periods
     sorted_cohorts = sorted(cohort_map.keys())[-12:]
