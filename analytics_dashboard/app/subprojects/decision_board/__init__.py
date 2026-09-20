@@ -110,7 +110,7 @@ def _build_p0_decisions(health_kpi, monthly_trend, channel_breakdown, funnel_rat
             "title": "高退款率紧急治理",
             "evidence": {"退款率": f"{refund_rate * 100:.2f}%", "警戒线": "10%"},
             "action": "立即排查高退款商品类目和用户群，对退款率超标的商品暂停推广并联系供应商整改；同步优化商品详情页描述准确性和售后流程",
-            "expected_impact": "将退款率降至10%以下，预计可挽回约{(refund_rate - 0.10) * gmv:.0f}元GMV流失",
+            "expected_impact": "先按退款原因和商品分层建立基线，治理后复核退款订单率与退款金额率",
             "owner": "运营",
             "timeline": "短期"
         })
@@ -128,7 +128,7 @@ def _build_p0_decisions(health_kpi, monthly_trend, channel_breakdown, funnel_rat
                     "降幅": f"{(1 - gmv_list[-1] / max(gmv_list[-2], 0.01)) * 100:.1f}%"
                 },
                 "action": "紧急启动全渠道促销活动，加大高转化渠道的投放预算，针对性发放挽回优惠券给沉睡用户群",
-                "expected_impact": "短期内刺激消费回流，力争下月GMV环比回升10%以上",
+                "expected_impact": "活动上线后按渠道和用户分层复核增量GMV，避免将自然波动归因于促销",
                 "owner": "市场",
                 "timeline": "短期"
             })
@@ -149,7 +149,7 @@ def _build_p0_decisions(health_kpi, monthly_trend, channel_breakdown, funnel_rat
                 "渠道集中度": "单一渠道占比超30%，存在依赖风险"
             },
             "action": "重新评估各渠道ROAS，减少低效渠道投放，将预算转向高转化渠道；同时拓展1-2个新渠道降低集中度风险",
-            "expected_impact": "提升整体营销ROI 15%以上，降低单一渠道依赖风险",
+            "expected_impact": "采用小预算分组测试验证预算迁移效果，并持续监控整体ROAS与渠道集中度",
             "owner": "市场",
             "timeline": "短期"
         })
@@ -169,7 +169,7 @@ def _build_p0_decisions(health_kpi, monthly_trend, channel_breakdown, funnel_rat
                     "流失占比": f"{churn_pct * 100:.1f}%"
                 },
                 "action": "对重要挽留客户启动一对一挽回计划：专属客服回访 + 大额回归券 + 新品优先体验权；对流失客户批量发送唤醒push",
-                "expected_impact": "目标挽回30%流失客户，预计带来额外GMV增长",
+                "expected_impact": "设置未触达对照组，比较回流率、复购率与增量GMV后再扩大策略",
                 "owner": "运营",
                 "timeline": "短期"
             })
@@ -206,7 +206,7 @@ def _build_p1_decisions(health_kpi, funnel_rates, funnel, segments, customer_ins
                 "全部环节": ", ".join(f"{s}= {r * 100:.1f}%" for s, r in bottlenecks)
             },
             "action": f"针对「{worst_stage}」环节进行专项优化：A/B测试不同页面布局、优化加载速度、简化用户操作步骤",
-            "expected_impact": f"将{worst_stage}转化率提升20%以上，带动整体GMV增长",
+            "expected_impact": f"围绕{worst_stage}设计A/B测试，以阶段转化率和最终支付率验证效果",
             "owner": "产品",
             "timeline": "中期"
         })
@@ -222,7 +222,7 @@ def _build_p1_decisions(health_kpi, funnel_rates, funnel, segments, customer_ins
                 "总GMV": f"{gmv:.2f}元"
             },
             "action": "推行满减促销、捆绑销售和交叉推荐策略；在购物车页面增加「凑单推荐」模块，设置梯度满减门槛",
-            "expected_impact": "客单价提升10-20%，带动整体GMV增长",
+            "expected_impact": "通过分组实验同时观察客单价、转化率和毛利，确认策略是否带来净增量",
             "owner": "运营",
             "timeline": "中期"
         })
@@ -239,7 +239,7 @@ def _build_p1_decisions(health_kpi, funnel_rates, funnel, segments, customer_ins
                 "新客户占比": f"{new_customer_count / total_rfm * 100:.1f}%" if total_rfm > 0 else "0%"
             },
             "action": "建立客户生命周期管理体系：新用户7日留存引导、活跃用户会员成长体系、沉默用户30日/60日/90日阶梯唤醒机制",
-            "expected_impact": "将客户留存率提升15%，降低获客成本依赖",
+            "expected_impact": "按注册月份持续观察Cohort留存，并使用对照组验证召回策略的增量效果",
             "owner": "运营",
             "timeline": "中期"
         })
@@ -255,7 +255,7 @@ def _build_p1_decisions(health_kpi, funnel_rates, funnel, segments, customer_ins
                 "预估触达ROI": f"{estimated_roi:.2f}"
             },
             "action": f"对{high_potential_count}名高潜复购用户分组推送个性化优惠券，结合其历史购买偏好进行品类精准推荐",
-            "expected_impact": f"预计带来约{estimated_roi:.1f}倍ROI的额外收入",
+            "expected_impact": f"当前情景ROI为{estimated_roi:.1f}；需用真实触达成本和转化率替换假设后再决策",
             "owner": "运营",
             "timeline": "中期"
         })
@@ -282,7 +282,7 @@ def _build_p2_decisions(segments, rfm_labels, channel_breakdown, customer_insigh
                 "总用户数": total_rfm
             },
             "action": "建立分群运营SOP：重要价值客户→VIP权益+新品内测；重要发展客户→品类偏好推荐+满减券；潜力客户→捆绑套餐+会员升级引导",
-            "expected_impact": "各分群人均消费提升10-25%，整体用户LTV显著增长",
+            "expected_impact": "分别跟踪各分群的复购率、客单价和LTV，以实际结果评估运营策略",
             "owner": "运营",
             "timeline": "长期"
         })
@@ -301,7 +301,7 @@ def _build_p2_decisions(segments, rfm_labels, channel_breakdown, customer_insigh
                         "title": "高价值客户深度运营",
                         "evidence": {"客户群": name, "人数": count, "GMV占比": f"{gmv_share * 100:.1f}%"},
                         "action": f"为{name}（{count}人）建立VIP专属服务体系：1对1客服、生日礼遇、新品优先购、专属折扣日",
-                        "expected_impact": "巩固核心用户忠诚度，提升该类用户年度复购频次20%以上",
+                        "expected_impact": "以未参与权益活动的相似用户为对照，验证复购频次和LTV变化",
                         "owner": "运营",
                         "timeline": "长期"
                     })
@@ -311,7 +311,7 @@ def _build_p2_decisions(segments, rfm_labels, channel_breakdown, customer_insigh
                         "title": "沉睡用户系统性唤醒",
                         "evidence": {"客户群": name, "人数": count},
                         "action": f"对{count}名沉睡用户设计三段式唤醒流程：短信触达→APP Push→专属优惠券，配合限时活动提升紧迫感",
-                        "expected_impact": "目标唤醒率15-20%，为平台注入增量活跃用户",
+                        "expected_impact": "分批触达并比较自然回流率，验证优惠券和消息触达的增量贡献",
                         "owner": "市场",
                         "timeline": "中期"
                     })
@@ -331,7 +331,7 @@ def _build_p2_decisions(segments, rfm_labels, channel_breakdown, customer_insigh
                         "最大渠道占比": f"{top_channel.get('share', 0) * 100:.1f}%"
                     },
                     "action": "建立渠道健康度评分体系，每季度review各渠道ROAS；对新兴渠道进行小预算测试（如直播、短视频带货），逐步降低对单一渠道的依赖",
-                    "expected_impact": "渠道结构更加健康，中长期获客成本降低20%以上",
+                    "expected_impact": "以小预算测试新渠道，依据CPA、ROAS和增量订单决定是否扩量",
                     "owner": "市场",
                     "timeline": "长期"
                 })
@@ -419,7 +419,7 @@ def _build_comprehensive_insights(health_kpi, monthly_trend, channel_breakdown, 
     high_potential_count = repurchase_summary.get("high_potential_count", 0)
     estimated_roi = repurchase_summary.get("estimated_roi", 0)
     if high_potential_count > 0:
-        insights.append(f"复购预测模型识别出 {high_potential_count} 名高潜复购用户，预估触达ROI为 {estimated_roi:.2f}，建议配合优惠券策略进行精准触达")
+        insights.append(f"复购倾向规则评分识别出 {high_potential_count} 名高潜用户，情景ROI为 {estimated_roi:.2f}；该结果依赖触达成本和转化率假设，需通过实验验证")
 
     if channel_breakdown:
         active_channels = [c for c in channel_breakdown if isinstance(c, dict) and c.get("gmv", 0) > 0]
@@ -468,7 +468,7 @@ def _default_roadmap():
         {"milestone": "v0.2", "description": "实现经营健康诊断模块：GMV、客单价、退款率、月度趋势、渠道拆解、转化漏斗"},
         {"milestone": "v0.3", "description": "实现用户建模宽表（RFM）：Recency / Frequency / Monetary 特征工程与分群标注"},
         {"milestone": "v0.4", "description": "实现客户分群模块：基于RFM的规则分群，匹配差异化运营策略"},
-        {"milestone": "v0.5", "description": "实现复购预测模块：可解释评分模型 + 高潜用户触达名单 + ROI预估"},
+        {"milestone": "v0.5", "description": "实现复购倾向评分模块：可解释规则评分 + 高潜用户触达名单 + 情景ROI"},
         {"milestone": "v0.6", "description": "实现综合决策板模块：整合各子项目结果，生成P0/P1/P2三级决策建议"},
         {"milestone": "v1.0", "description": "全模块联调与端到端测试，产出完整经营分析报告"},
         {"milestone": "v1.1", "description": "优化UI展示：ECharts可视化、决策板交互、导出PDF报告"},

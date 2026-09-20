@@ -253,7 +253,11 @@ app.get("/api/analytics/rfm", (_req, res) => {
       u.user_id AS userId,
       u.name,
       u.segment,
-      CAST(julianday('now') - julianday(MAX(o.created_at)) AS INTEGER) AS recencyDays,
+      CAST(
+        julianday((SELECT MAX(created_at) FROM orders WHERE status IN ('paid', 'completed')))
+        - julianday(MAX(o.created_at))
+        AS INTEGER
+      ) AS recencyDays,
       COUNT(o.order_id) AS frequency,
       ROUND(SUM(o.paid_amount), 2) AS monetary
     FROM users u
@@ -696,11 +700,11 @@ app.get("/api/etl/metrics", (_req, res) => {
   // Conversion funnel from traffic
   const funnel = db.prepare(`
     SELECT
-      SUM(CASE WHEN event_type = 'view_home' THEN 1 ELSE 0 END) AS view_home,
-      SUM(CASE WHEN event_type = 'view_product' THEN 1 ELSE 0 END) AS view_product,
-      SUM(CASE WHEN event_type = 'add_to_cart' THEN 1 ELSE 0 END) AS add_to_cart,
-      SUM(CASE WHEN event_type = 'checkout' THEN 1 ELSE 0 END) AS checkout,
-      SUM(CASE WHEN event_type = 'pay_success' THEN 1 ELSE 0 END) AS pay_success
+      COUNT(DISTINCT CASE WHEN event_type = 'view_home' THEN session_id END) AS view_home,
+      COUNT(DISTINCT CASE WHEN event_type = 'view_product' THEN session_id END) AS view_product,
+      COUNT(DISTINCT CASE WHEN event_type = 'add_to_cart' THEN session_id END) AS add_to_cart,
+      COUNT(DISTINCT CASE WHEN event_type = 'checkout' THEN session_id END) AS checkout,
+      COUNT(DISTINCT CASE WHEN event_type = 'pay_success' THEN session_id END) AS pay_success
     FROM page_events
   `).get();
 
@@ -719,7 +723,7 @@ app.get("/api/etl/metrics", (_req, res) => {
         add_to_cart: funnel.add_to_cart,
         checkout: funnel.checkout,
         pay_success: funnel.pay_success,
-        definition: "page_events 各 event_type 计数"
+        definition: "COUNT(DISTINCT session_id) 按 event_type 统计独立会话"
       }
     }
   });

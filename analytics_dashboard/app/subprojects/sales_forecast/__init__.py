@@ -2,6 +2,27 @@ from ...data_access import query
 import math
 
 
+def _linear_projection(values, horizon):
+    """Fit a simple linear trend and project the next ``horizon`` points."""
+    n = len(values)
+    if n == 0:
+        return [0.0] * horizon, 0.0
+    if n == 1:
+        return [round(max(0, values[0]), 4)] * horizon, 0.0
+
+    x_mean = (n - 1) / 2
+    y_mean = sum(values) / n
+    numerator = sum((i - x_mean) * (values[i] - y_mean) for i in range(n))
+    denominator = sum((i - x_mean) ** 2 for i in range(n))
+    slope = numerator / denominator if denominator > 0 else 0.0
+    intercept = y_mean - slope * x_mean
+    forecasts = [
+        round(max(0, intercept + slope * (n - 1 + step)), 4)
+        for step in range(1, horizon + 1)
+    ]
+    return forecasts, round(slope, 4)
+
+
 def run():
     daily_rows = query("""
         SELECT
@@ -16,8 +37,8 @@ def run():
     if not daily_rows:
         return {
             "title": "销售预测与库存备货",
-            "description": "最近30天移动平均、标准差、波动系数、安全库存",
-            "method": "moving_average_30d",
+            "description": "最近30天线性趋势、滚动回测、波动范围与销售缓冲参考",
+            "method": "rolling_linear_trend_30d",
             "forecast": {
                 "daily_avg_gmv": 0,
                 "daily_std_gmv": 0,
@@ -48,52 +69,13 @@ def run():
 
     cv = std_gmv / mean_gmv if mean_gmv > 0 else 0
 
-    next_7d_gmv = [round(mean_gmv, 4) for _ in range(7)]
-
-    # Linear trend projection for 7-day forecast
-    slope = 0.0
-    intercept = mean_gmv
-    if window >= 14:
-        x_vals = list(range(window))
-        x_mean = (window - 1) / 2
-        y_mean = sum(recent_gmv) / window
-        num = sum((x_vals[i] - x_mean) * (recent_gmv[i] - y_mean) for i in range(window))
-        den = sum((x_vals[i] - x_mean) ** 2 for i in range(window))
-        slope = round(num / den, 4) if den > 0 else 0.0
-        intercept = y_mean - slope * x_mean
-        next_7d_gmv_trend = []
-        for d in range(1, 8):
-            val = intercept + slope * (window - 1 + d)
-            next_7d_gmv_trend.append(round(max(0, val), 4))
-        next_7d_gmv = next_7d_gmv_trend
-
-    # 30-day forecast (same linear trend, extended)
-    next_30d_gmv = []
-    monthly_forecast = {}
-    if slope != 0 or window >= 14:
-        for d in range(1, 31):
-            val = intercept + slope * (window - 1 + d)
-            next_30d_gmv.append(round(max(0, val), 4))
-        # Group by week for chart display
-        weekly_forecast = []
-        for w in range(0, 30, 7):
-            chunk = next_30d_gmv[w:w+7]
-            weekly_forecast.append(round(sum(chunk) / len(chunk), 4))
-        monthly_forecast = {
-            "daily": next_30d_gmv,
-            "weekly_avg": weekly_forecast
-        }
-    else:
-        next_30d_gmv = [round(mean_gmv, 4) for _ in range(30)]
-        monthly_forecast = {
-            "daily": next_30d_gmv,
-            "weekly_avg": [round(mean_gmv, 4) for _ in range(5)]
-        }
-
-    z = 1.96
-    margin = z * std_gmv
-    next_7d_lower = [round(max(0, mean_gmv - margin), 2) for _ in range(7)]
-    next_7d_upper = [round(mean_gmv + margin, 2) for _ in range(7)]
+    next_7d_gmv, slope = _linear_projection(recent_gmv, 7)
+    next_30d_gmv, _ = _linear_projection(recent_gmv, 30)
+    weekly_forecast = []
+    for week_start in range(0, 30, 7):
+        chunk = next_30d_gmv[week_start:week_start + 7]
+        weekly_forecast.append(round(sum(chunk) / len(chunk), 4))
+    monthly_forecast = {"daily": next_30d_gmv, "weekly_avg": weekly_forecast}
 
     # Trend direction for display
     if slope > 1:
@@ -157,7 +139,7 @@ def run():
         insights.append(f"波动系数 CV = {cv:.4f}，波动较小，销售趋势相对稳定")
 
     insights.append(
-        f"安全库存建议金额为 {safety_stock_gmv:,.2f} 元（安全系数1.5）"
+        f"销售波动缓冲金额参考为 {safety_stock_gmv:,.2f} 元（按 1.5 倍日GMV标准差估算，不等同于SKU安全库存）"
     )
 
     if top_categories:
@@ -169,7 +151,7 @@ def run():
     if cv > 0.5:
         insights.append("波动系数较高（>0.5），建议结合促销日历和外部因素进一步分析波动来源")
     elif cv < 0.15:
-        insights.append("销售波动极小（CV<0.15），预测置信度较高，可适当降低安全库存比例")
+        insights.append("销售波动较小（CV<0.15）；仍需结合促销、节假日和品类库存验证预测稳定性")
 
     if len(daily_gmv) >= 3:
         recent_trend = daily_gmv[-3:]
@@ -178,27 +160,33 @@ def run():
         elif all(recent_trend[i] >= recent_trend[i + 1] for i in range(len(recent_trend) - 1)):
             insights.append("最近3天GMV呈下降趋势，需关注是否出现异常波动")
 
-    # Backtesting: compute MAE/MAPE/RMSE on the last 60 days
+    # Rolling one-step backtest with the same linear-trend model used above.
     test_start = max(window, n - 60)
-    errors = []
-    for i in range(test_start, n):
-        train = daily_gmv[i - window:i]
-        pred = sum(train) / window
-        actual = daily_gmv[i]
-        errors.append(abs(pred - actual))
-    mae = round(sum(errors) / len(errors), 2) if errors else 0
-
+    residuals = []
+    absolute_errors = []
     ape_errors = []
     for i in range(test_start, n):
         train = daily_gmv[i - window:i]
-        pred = sum(train) / window
+        pred = _linear_projection(train, 1)[0][0]
         actual = daily_gmv[i]
+        residual = actual - pred
+        residuals.append(residual)
+        absolute_errors.append(abs(residual))
         if actual > 0:
             ape_errors.append(abs((pred - actual) / actual))
-    mape = round(sum(ape_errors) / len(ape_errors) * 100, 2) if ape_errors else 0
 
-    se_errors = [(daily_gmv[i] - sum(daily_gmv[i-window:i])/window) ** 2 for i in range(test_start, n)]
-    rmse = round(math.sqrt(sum(se_errors) / len(se_errors)), 2) if se_errors else 0
+    mae = round(sum(absolute_errors) / len(absolute_errors), 2) if absolute_errors else 0
+    mape = round(sum(ape_errors) / len(ape_errors) * 100, 2) if ape_errors else 0
+    rmse = round(math.sqrt(sum(r ** 2 for r in residuals) / len(residuals)), 2) if residuals else 0
+    residual_mean = sum(residuals) / len(residuals) if residuals else 0
+    residual_variance = (
+        sum((r - residual_mean) ** 2 for r in residuals) / len(residuals)
+        if residuals else std_gmv ** 2
+    )
+    residual_std = math.sqrt(residual_variance)
+    margin = 1.96 * residual_std
+    next_7d_lower = [round(max(0, prediction - margin), 2) for prediction in next_7d_gmv]
+    next_7d_upper = [round(prediction + margin, 2) for prediction in next_7d_gmv]
 
     # Monthly trend decomposition (simple: monthly averages vs overall trend)
     monthly_rows = query("""
@@ -231,8 +219,8 @@ def run():
 
     return {
         "title": "销售预测与库存备货",
-        "description": "最近30天移动平均、标准差、波动系数、安全库存",
-        "method": "moving_average_30d",
+        "description": "最近30天线性趋势、滚动回测、波动范围与销售缓冲参考",
+        "method": "rolling_linear_trend_30d",
         "forecast": {
             "daily_avg_gmv": round(mean_gmv, 2),
             "daily_std_gmv": round(std_gmv, 2),
@@ -242,6 +230,7 @@ def run():
             "next_7d_gmv": next_7d_gmv,
             "next_7d_lower": next_7d_lower,
             "next_7d_upper": next_7d_upper,
+            "interval_method": "normal_approximation_from_backtest_residuals",
             "next_30d": monthly_forecast,
             "safety_stock_gmv": safety_stock_gmv,
             "mae": mae,

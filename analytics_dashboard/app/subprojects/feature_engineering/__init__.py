@@ -2,31 +2,29 @@ from app.data_access import query
 
 
 def run():
+    reference_rows = query("""
+        SELECT MAX(order_date) AS reference_date
+        FROM fact_order
+        WHERE status IN ('paid', 'completed')
+    """)
+    reference_date = reference_rows[0]["reference_date"] if reference_rows else None
+
+    if not reference_date:
+        return _empty_result()
+
     rows = query("""
         SELECT
             user_id,
-            CAST(julianday('now') - julianday(MAX(order_date)) AS INTEGER) AS recency,
+            CAST(julianday(?) - julianday(MAX(order_date)) AS INTEGER) AS recency,
             COUNT(DISTINCT order_id) AS frequency,
             COALESCE(SUM(paid_amount), 0) AS monetary
         FROM fact_order
         WHERE status IN ('paid', 'completed')
         GROUP BY user_id
-    """)
+    """, [reference_date])
 
     if not rows:
-        return {
-            "title": "用户建模宽表 (RFM)",
-            "description": "基于RFM框架构建用户特征宽表，为复购预测和客户分群提供统一特征底座",
-            "rfm_segments": [],
-            "summary": {
-                "total_users": 0,
-                "avg_recency": 0,
-                "avg_frequency": 0,
-                "avg_monetary": 0
-            },
-            "rfm_distribution": {"labels": {}},
-            "insights": ["暂无订单数据，无法生成RFM宽表"]
-        }
+        return _empty_result(reference_date)
 
     users = []
     for row in rows:
@@ -171,13 +169,14 @@ def run():
 
     return {
         "title": "用户建模宽表 (RFM)",
-        "description": "基于RFM框架构建用户特征宽表，为复购预测和客户分群提供统一特征底座",
+        "description": "基于RFM框架构建用户特征宽表，为复购倾向评分和客户分群提供统一特征底座",
         "rfm_segments": rfm_segments,
         "summary": {
             "total_users": n,
             "avg_recency": round(avg_recency, 1),
             "avg_frequency": round(avg_frequency, 2),
-            "avg_monetary": round(avg_monetary, 2)
+            "avg_monetary": round(avg_monetary, 2),
+            "reference_date": reference_date
         },
         "rfm_distribution": {
             "labels": label_counts
@@ -194,3 +193,21 @@ def _add_months(ym, offset):
         y += 1
         m -= 12
     return f"{y}-{m:02d}"
+
+
+def _empty_result(reference_date=None):
+    return {
+        "title": "用户建模宽表 (RFM)",
+        "description": "基于RFM框架构建用户特征宽表，为复购倾向评分和客户分群提供统一特征底座",
+        "rfm_segments": [],
+        "summary": {
+            "total_users": 0,
+            "avg_recency": 0,
+            "avg_frequency": 0,
+            "avg_monetary": 0,
+            "reference_date": reference_date
+        },
+        "rfm_distribution": {"labels": {}},
+        "cohort_matrix": [],
+        "insights": ["暂无订单数据，无法生成RFM宽表"]
+    }

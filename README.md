@@ -4,13 +4,13 @@
 
 ## 📊 项目简介
 
-本项目是一个完整的 **模拟电商经营分析平台**，包含：
+本项目是课程团队基于教师提供的模拟商城与 `course_dataset_v2` 数据集开发的 **电商经营分析与决策平台**，包含：
 
 - 🛒 **模拟电商商城**（React 前端 + Express 后端）：支持用户注册、浏览商品、加购、下单、支付等完整购物流程
 - 📈 **智能分析仪表盘**（FastAPI + ECharts）：9 个数据挖掘子项目，覆盖经营健康度、客户分群、销售预测、营销归因等
 - 🤖 **AI 分析助手**：支持接入 OpenAI 兼容大模型 API，基于实时数据生成动态分析建议
 
-所有数据均为模拟生成（2024-04 ~ 2026-03，默认 20000 用户），可复现，无隐私风险。
+所有数据均为模拟生成（2024-04 ~ 2026-03，默认 20,000 用户），可复现，无隐私风险。商城交易闭环与课程数据集属于课程基础设施；本仓库的分析重点是指标口径、用户分析、经营诊断、可视化与决策支持。分析结论仅用于教学演示，不代表真实商业效果。
 
 ---
 
@@ -41,7 +41,7 @@
 │                        server/  Express API  :38173                           │
 │                      (读写)  SQLite  eshop.sqlite                              │
 │                                                                              │
-│  16 张业务表：users / categories / spu / sku / campaigns / coupons           │
+│  20 张业务表：users / categories / spu / sku / campaigns / coupons           │
 │  orders / order_items / carts / cart_items / payments / refunds              │
 │  shipments / page_events / inventory_movements / product_reviews             │
 │  ads_spend / user_coupons / admin_action_logs                                │
@@ -52,7 +52,7 @@
 │  9 个子项目：business_health / feature_engineering / repurchase_prediction   │
 │             customer_clustering / association_rules / sales_forecast         │
 │             marketing_attribution / fulfillment_analysis / decision_board     │
-└──────────────────────────────────────────────────────────────────────────────┘──────────────┘
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -65,7 +65,7 @@
 
 | 依赖      | 版本      |
 | ------- | ------- |
-| Node.js | >= 18   |
+| Node.js | 20 / 22 LTS（推荐） |
 | Python  | >= 3.10 |
 | npm     | >= 9    |
 
@@ -75,11 +75,10 @@
 # 1. 安装所有依赖
 npm run install:all
 
-# 3.生成模拟数据（首次运行）
-cd ../server
-npm run seed
+# 2. 生成模拟数据（首次运行；会重建本地课程数据）
+npm run seed --prefix server
 
-# 2. 一键启动（mall-api + 商城前端 + 仪表盘）
+# 3. 一键启动（mall-api + 商城前端 + 仪表盘）
 npm run dev
 ```
 
@@ -123,8 +122,8 @@ dashboard/
 │   │   └── subprojects/                 # 9 个数据分析子项目
 │   │       ├── business_health/         # 经营健康度（KPI、漏斗、趋势）
 │   │       ├── feature_engineering/     # 特征工程（RFM 特征构建）
-│   │       ├── repurchase_prediction/   # 复购预测
-│   │       ├── customer_clustering/     # 客户聚类（用户分群）
+│   │       ├── repurchase_prediction/   # 复购倾向规则评分
+│   │       ├── customer_clustering/     # RFM 规则分群
 │   │       ├── association_rules/       # 关联规则（购物篮分析）
 │   │       ├── sales_forecast/          # 销售预测（7天/30天 GMV）
 │   │       ├── marketing_attribution/   # 营销归因（渠道 ROAS）
@@ -152,7 +151,7 @@ dashboard/
 
 ## 📊 数据库说明
 
-### 表结构（16 张表 + 多个视图）
+### 表结构（20 张表 + 14 个分析视图）
 
 | 类型       | 表名                                                       | 说明      |
 | -------- | -------------------------------------------------------- | ------- |
@@ -183,18 +182,28 @@ dashboard/
 - 默认用户数：20,000
 - 可配置：`SEED_USERS`、`SEED_SPU_PER_CATEGORY`、`SEED_ABANDONED_SESSIONS`
 
+### 核心指标口径
+
+- 客单价：`GMV / 付费订单数`。
+- 客均消费：`GMV / 付费买家数`。
+- 退款订单率：`已批准退款订单数 / 付费订单数`。
+- 退款金额率：`已批准退款金额 / GMV`。
+- 转化漏斗：按 `COUNT(DISTINCT session_id)` 统计到达各事件阶段的独立会话。
+- RFM 与复购倾向评分：以数据集最大订单日期为分析基准，避免系统日期导致历史数据整体“老化”。
+- 决策板中的运营动作与情景 ROI 均为待验证假设，应通过分组实验或上线复盘确认，不作为已实现收益。
+
 ---
 
 ## 📈 9 个数据分析子项目
 
 | #   | 子项目       | 功能                    | 输出                                |
 | --- | --------- | --------------------- | --------------------------------- |
-| 1   | **经营健康度** | KPI 计算、月度趋势、漏斗分析、渠道分解 | 健康评分、增长机会、风险预警                    |
+| 1   | **经营健康度** | KPI 计算、月度趋势、会话级漏斗、渠道分解 | 健康评分、增长机会、风险预警                    |
 | 2   | **特征工程**  | RFM 特征构建              | Recency / Frequency / Monetary 分布 |
-| 3   | **复购预测**  | 基于历史行为预测复购概率          | 复购概率分布、高潜用户列表                     |
-| 4   | **客户聚类**  | 用户分群（K-Means）         | 5-7 个用户画像分群                       |
-| 5   | **关联规则**  | 购物篮分析（Apriori）        | 频繁项集、关联规则、提升度                     |
-| 6   | **销售预测**  | 线性回归外推                | 未来 7 天 / 30 天 GMV 预测              |
+| 3   | **复购倾向评分** | RFM 与近期趋势的可解释规则评分      | 高复购倾向用户列表、情景 ROI                   |
+| 4   | **客户分群**  | RFM 五分位规则分群            | 用户价值分层及运营策略                        |
+| 5   | **关联规则**  | 两两商品购物篮共现分析           | 支持度、置信度、提升度、组合建议                   |
+| 6   | **销售预测**  | 30 日线性趋势与滚动一步回测        | 未来 7/30 日 GMV、MAE/MAPE/RMSE、近似波动范围  |
 | 7   | **营销归因**  | 渠道 ROAS 分析            | 各渠道投入产出比、最优渠道                     |
 | 8   | **履约与售后** | 发货时效、退款率、客诉分析         | 履约健康度、售后风险                        |
 | 9   | **综合诊断**  | 整合所有模块                | Top 3 决策建议、优先级排序                  |
@@ -205,7 +214,7 @@ dashboard/
 
 ### 本地模式（默认）
 
-无需配置，开箱即用。基于关键词匹配 + 模板引擎：
+无需配置，开箱即用。基于关键词匹配 + 模板引擎。回答中的运营建议是分析假设，不是已经验证的收益：
 
 | 关键词            | 触发内容          |
 | -------------- | ------------- |
@@ -241,20 +250,20 @@ DASHBOARD_AI_MODEL=deepseek-chat
 ### 单独启动各服务
 
 ```bash
-React 商城
+# React 商城
 cd client && npm run dev # http://localhost:39174
 
-Express API
+# Express API
 cd server && npm run dev # http://localhost:38173
 
-分析仪表盘
-cd analytics_dashboard && uvicorn app.main:app --reload --port 9002
+# 分析仪表盘（从仓库根目录执行）
+python -m uvicorn app.main:app --app-dir analytics_dashboard --reload --port 9002
 ```
 
 ### 重新生成数据
 
 ```bash
-cd server npm run seed # 清空并重新生成数据
+npm run seed --prefix server # 清空并重新生成本地模拟数据
 ```
 
 
@@ -263,7 +272,8 @@ cd server npm run seed # 清空并重新生成数据
 ### 运行测试
 
 ```bash
-cd analytics_dashboard python -m pytest tests/
+python -m unittest discover -s analytics_dashboard/tests -p "test_*.py"
+python analytics_dashboard/tests/smoke_test.py
 ```
 
 ---
@@ -271,14 +281,12 @@ cd analytics_dashboard python -m pytest tests/
 ## 🐳 Docker 部署
 
 ```bash
-# 构建并启动 Express API
-docker build -t eshop-api server/ docker run -p 38173:38173 eshop-api
+# 首次运行先在宿主机生成模拟数据，再启动两个服务
+npm run seed --prefix server
+docker compose up --build
 ```
 
-```
-# 构建并启动分析仪表盘
-docker build -t eshop-dashboard analytics_dashboard/ docker run -p 9002:9002 eshop-dashboard
-```
+Compose 会把 `./server/data` 挂载到 API 与分析仪表盘容器，两个服务读取同一份 `eshop.sqlite`。分析仪表盘暴露在 `http://localhost:9002`。
 
 ---
 

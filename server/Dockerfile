@@ -6,7 +6,7 @@ COPY server/package*.json ./
 RUN npm ci --omit=dev
 
 COPY server/src ./src
-COPY server/data ./data
+RUN mkdir -p ./data
 
 ENV PORT=38173
 EXPOSE 38173
