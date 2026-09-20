@@ -23,14 +23,21 @@ def run():
     """)
     buyers = int(buyers_row[0]["buyers"] or 0) if buyers_row else 0
 
-    aov = round(gmv / buyers, 2) if buyers > 0 else 0
+    # 客单价以付费订单为分母；GMV / 买家数是客均消费，二者不可混用。
+    aov = round(gmv / orders, 2) if orders > 0 else 0
+    avg_spend_per_buyer = round(gmv / buyers, 2) if buyers > 0 else 0
 
-    total_refund_row = query("""
-        SELECT COALESCE(SUM(amount), 0) AS refund_total
+    refund_row = query("""
+        SELECT
+            COALESCE(SUM(CASE WHEN status = 'approved' THEN amount ELSE 0 END), 0) AS refund_total,
+            COUNT(DISTINCT CASE WHEN status = 'approved' THEN order_id END) AS refund_orders
         FROM fact_refund
     """)
-    refund_total = float(total_refund_row[0]["refund_total"] or 0) if total_refund_row else 0
-    refund_rate = round(refund_total / gmv, 4) if gmv > 0 else 0
+    refund_total = float(refund_row[0]["refund_total"] or 0) if refund_row else 0
+    refund_orders = int(refund_row[0]["refund_orders"] or 0) if refund_row else 0
+    # 默认“退款率”采用退款订单数 / 付费订单数；另行暴露退款金额率。
+    refund_rate = round(refund_orders / orders, 4) if orders > 0 else 0
+    refund_amount_rate = round(refund_total / gmv, 4) if gmv > 0 else 0
 
     monthly_trend_rows = query("""
         SELECT
@@ -74,13 +81,14 @@ def run():
     funnel_rows = query("""
         SELECT
             event_type,
-            COUNT(*) AS event_count
+            COUNT(DISTINCT session_id) AS session_count
         FROM fact_traffic
+        WHERE session_id IS NOT NULL
         GROUP BY event_type
     """)
     funnel_map = {}
     for row in funnel_rows:
-        funnel_map[row["event_type"]] = int(row["event_count"] or 0)
+        funnel_map[row["event_type"]] = int(row["session_count"] or 0)
 
     view_home = funnel_map.get("view_home", 0)
     view_product = funnel_map.get("view_product", 0)
@@ -131,8 +139,9 @@ def run():
         SELECT
             strftime('%Y-%m', event_date) AS month,
             event_type,
-            COUNT(*) AS cnt
+            COUNT(DISTINCT session_id) AS cnt
         FROM fact_traffic
+        WHERE session_id IS NOT NULL
         GROUP BY strftime('%Y-%m', event_date), event_type
         ORDER BY month
     """)
@@ -172,12 +181,15 @@ def run():
             "orders": orders,
             "buyers": buyers,
             "aov": aov,
-            "refund_rate": refund_rate
+            "avg_spend_per_buyer": avg_spend_per_buyer,
+            "refund_rate": refund_rate,
+            "refund_amount_rate": refund_amount_rate
         },
         "monthly_trend": monthly_trend,
         "channel_breakdown": channel_breakdown,
         "funnel": funnel,
         "funnel_rates": funnel_rates,
+        "funnel_grain": "distinct_session",
         "monthly_funnel_trend": monthly_funnel_trend,
         "insights": insights
     }

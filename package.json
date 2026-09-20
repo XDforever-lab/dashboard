@@ -4,14 +4,19 @@
   "private": true,
   "type": "module",
   "description": "IT project management classroom practice: e-commerce dashboard and business decision support.",
+  "engines": {
+    "node": ">=20 <24",
+    "npm": ">=9"
+  },
   "scripts": {
     "install:all": "npm install --prefix server && npm install --prefix client && pip install -r analytics_dashboard/requirements.txt",
     "dev": "node scripts/dev.mjs",
     "start:mall-api": "npm start --prefix server",
     "start:mall-web": "npm run dev --prefix client",
     "start:dashboard": "python -m uvicorn app.main:app --app-dir analytics_dashboard --host 127.0.0.1 --port 9002",
+    "test:analytics": "python -m unittest discover -s analytics_dashboard/tests -p \"test_*.py\"",
     "test:dashboard": "python analytics_dashboard/tests/smoke_test.py",
     "build:mall-web": "npm run build --prefix client",
-    "verify": "npm run build:mall-web"
+    "verify": "npm run test:analytics && npm run build:mall-web"
   }
 }

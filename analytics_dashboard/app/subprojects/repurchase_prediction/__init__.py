@@ -1,7 +1,7 @@
-from datetime import date, timedelta
+from datetime import timedelta
 
 from ...data_access import query
-from ...utils import safe_divide
+from ...utils import parse_date
 
 
 def _min_max_normalize(values, reverse=False):
@@ -17,9 +17,18 @@ def _min_max_normalize(values, reverse=False):
 
 
 def run():
-    today_str = date.today().isoformat()
-    cutoff1_str = (date.today() - timedelta(days=30)).isoformat()
-    cutoff2_str = (date.today() - timedelta(days=60)).isoformat()
+    reference_rows = query("""
+        SELECT MAX(order_date) AS reference_date
+        FROM fact_order
+        WHERE status IN ('paid', 'completed')
+    """)
+    reference_date = parse_date(reference_rows[0]["reference_date"]) if reference_rows else None
+    if reference_date is None:
+        return _empty_result()
+
+    reference_date_str = reference_date.isoformat()
+    cutoff1_str = (reference_date - timedelta(days=30)).isoformat()
+    cutoff2_str = (reference_date - timedelta(days=60)).isoformat()
 
     # Use SQL to compute all aggregations — avoid pulling raw rows into Python
     rows = query("""
@@ -33,7 +42,7 @@ def run():
         FROM dim_user u
         LEFT JOIN fact_order o ON o.user_id = u.user_id AND o.status IN ('paid', 'completed')
         GROUP BY u.user_id
-    """, [today_str, cutoff1_str, cutoff2_str, cutoff1_str])
+    """, [reference_date_str, cutoff1_str, cutoff2_str, cutoff1_str])
 
     user_stats = []
     total_users = len(rows)
@@ -50,7 +59,7 @@ def run():
         })
 
     if not user_stats:
-        return _empty_result()
+        return _empty_result(reference_date_str)
 
     recencies = [u["recency"] for u in user_stats]
     frequencies = [u["frequency"] for u in user_stats]
@@ -101,6 +110,7 @@ def run():
     ]
 
     high_count = len(high_potential)
+    eligible_users = len(user_stats)
 
     total_monetary = sum(u["monetary"] for u in user_stats)
     total_frequency = sum(u["frequency"] for u in user_stats)
@@ -116,12 +126,15 @@ def run():
 
     summary = {
         "total_users": total_users,
+        "eligible_users": eligible_users,
         "high_potential_count": high_count,
-        "touch_rate": round(high_count / total_users, 4) if total_users > 0 else 0.0,
+        "touch_rate": round(high_count / eligible_users, 4) if eligible_users > 0 else 0.0,
         "estimated_roi": round(estimated_roi, 2),
+        "reference_date": reference_date_str,
+        "roi_assumptions": {"touch_cost": touch_cost, "conversion_rate": conversion_rate},
     }
 
-    touch_rate_pct = round(high_count / total_users * 100, 1) if total_users > 0 else 0
+    touch_rate_pct = round(high_count / eligible_users * 100, 1) if eligible_users > 0 else 0
     avg_monetary_top = (
         round(sum(u["monetary"] for u in top20) / len(top20), 2) if top20 else 0
     )
@@ -130,15 +143,15 @@ def run():
     )
 
     insights = [
-        f"共 {total_users} 位用户中，{high_count} 位被识别为高潜复购用户，触达比例为 {touch_rate_pct}%",
-        f"预估触达 ROI 为 {estimated_roi:.2f}（假设触达成本 5 元/人，转化率 15%）",
+        f"{eligible_users} 位有购买记录的用户中，{high_count} 位被识别为高复购倾向用户，占比 {touch_rate_pct}%",
+        f"情景 ROI 为 {estimated_roi:.2f}（假设触达成本 5 元/人、转化率 15%，并非实际实验结果）",
         f"高潜用户平均消费金额 {avg_monetary_top} 元，平均购买频次 {avg_freq_top} 次",
         "建议优先触达评分前 20 位高潜用户，可结合优惠券策略提升复购转化率",
     ]
 
     return {
-        "title": "复购预测与触达名单",
-        "description": "使用可解释评分模型输出高潜用户与触达 ROI",
+        "title": "复购倾向评分与触达名单",
+        "description": "使用可解释规则评分输出高复购倾向用户与情景 ROI",
         "model": {
             "type": "rule_based_scoring",
             "features": ["recency_score", "frequency_score", "monetary_score", "trend_score"],
@@ -150,10 +163,10 @@ def run():
     }
 
 
-def _empty_result():
+def _empty_result(reference_date=None):
     return {
-        "title": "复购预测与触达名单",
-        "description": "使用可解释评分模型输出高潜用户与触达 ROI",
+        "title": "复购倾向评分与触达名单",
+        "description": "使用可解释规则评分输出高复购倾向用户与情景 ROI",
         "model": {
             "type": "rule_based_scoring",
             "features": ["recency_score", "frequency_score", "monetary_score", "trend_score"],
@@ -162,9 +175,12 @@ def _empty_result():
         "high_potential_users": [],
         "summary": {
             "total_users": 0,
+            "eligible_users": 0,
             "high_potential_count": 0,
             "touch_rate": 0.0,
             "estimated_roi": 0.0,
+            "reference_date": reference_date,
+            "roi_assumptions": {"touch_cost": 5.0, "conversion_rate": 0.15},
         },
-        "insights": ["暂无足够数据用于复购预测分析"],
+        "insights": ["暂无足够数据用于复购倾向评分"],
     }

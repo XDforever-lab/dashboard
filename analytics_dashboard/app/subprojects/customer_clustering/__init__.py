@@ -20,28 +20,31 @@ def _quintile_scores(values, ascending=True):
 
 
 def run():
+    reference_rows = query("""
+        SELECT MAX(order_date) AS reference_date
+        FROM fact_order
+        WHERE status IN ('paid', 'completed')
+    """)
+    reference_date = reference_rows[0]["reference_date"] if reference_rows else None
+    if not reference_date:
+        return _empty_result()
+
     sql = """
         SELECT
             u.user_id,
             u.register_channel,
             u.member_level,
-            CAST(julianday('now') - julianday(MAX(o.order_date)) AS INTEGER) AS recency_days,
+            CAST(julianday(?) - julianday(MAX(o.order_date)) AS INTEGER) AS recency_days,
             COUNT(o.order_id) AS frequency,
             COALESCE(ROUND(SUM(o.paid_amount), 2), 0) AS monetary
         FROM dim_user u
         LEFT JOIN fact_order o ON o.user_id = u.user_id AND o.status IN ('paid', 'completed')
         GROUP BY u.user_id
     """
-    rows = query(sql)
+    rows = query(sql, [reference_date])
 
     if not rows:
-        return {
-            "title": "客户分群",
-            "description": "基于RFM的规则分群，不同群体匹配不同运营策略",
-            "method": "rfm_rule_based",
-            "segments": [],
-            "insights": ["暂无数据"]
-        }
+        return _empty_result(reference_date)
 
     recency_vals = [r["recency_days"] if r["recency_days"] is not None else 9999 for r in rows]
     frequency_vals = [r["frequency"] for r in rows]
@@ -130,6 +133,18 @@ def run():
         "title": "客户分群",
         "description": "基于RFM的规则分群，不同群体匹配不同运营策略",
         "method": "rfm_rule_based",
+        "reference_date": reference_date,
         "segments": result_segments,
         "insights": insights
+    }
+
+
+def _empty_result(reference_date=None):
+    return {
+        "title": "客户分群",
+        "description": "基于RFM的规则分群，不同群体匹配不同运营策略",
+        "method": "rfm_rule_based",
+        "reference_date": reference_date,
+        "segments": [],
+        "insights": ["暂无数据"]
     }

@@ -100,7 +100,7 @@ async function loadData(forceReload) {
     { title: 'CRISP-DM 方法论', desc: '商业理解 → 数据理解 → 数据准备 → 建模 → 评估 → 部署' },
     { title: 'RFM 用户分群', desc: 'Recency(近度) × Frequency(频次) × Monetary(金额) 三维评估用户价值' },
     { title: 'Cohort 留存分析', desc: '按首购月份分组，追踪每批用户后续月份的复购留存率' },
-    { title: 'Apriori 关联规则', desc: '基于购物篮共现挖掘商品组合，计算支持度、置信度、提升度' },
+    { title: '购物篮关联规则', desc: '基于两两商品共现计算支持度、置信度和提升度' },
     { title: '移动平均预测', desc: '30天滑动窗口 + 线性趋势外推，预测未来7天GMV与安全库存' },
     { title: 'WBS 甘特图', desc: '将项目拆解为6个可交付阶段，展示V1-V6渐进式交付进度' },
     { title: '安全库存模型', desc: '日波动系数 CV × 1.5 安全系数，按品类计算建议备货金额' },
@@ -1092,7 +1092,7 @@ function renderDecision() {
         <div class="d-body">${d.action || ''}</div>
         <div class="d-meta">
           <span>负责人: ${d.owner || '-'}</span>
-          <span>预期收益: ${d.expected_impact || '-'}</span>
+          <span>预期影响 / 验证方式: ${d.expected_impact || '-'}</span>
         </div>
       </div>
     `).join('')
@@ -1380,7 +1380,7 @@ function renderConfig() {
     { id: 'business_health', name: '经营健康诊断' },
     { id: 'feature_engineering', name: '用户建模宽表 (RFM)' },
     { id: 'customer_clustering', name: '客户分群' },
-    { id: 'repurchase_prediction', name: '复购预测与触达名单' },
+    { id: 'repurchase_prediction', name: '复购倾向评分与触达名单' },
     { id: 'association_rules', name: '商品关联规则' },
     { id: 'sales_forecast', name: '销售预测与库存备货' },
     { id: 'marketing_attribution', name: '营销归因与预算建议' },
